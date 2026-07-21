@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 from .config import Config, RoleConfig
+from .identity import AGENT_NAME
 
 
 class LLMError(RuntimeError):
@@ -70,14 +71,14 @@ class LLM:
         cfg = self.config.resolve(role)
         if cfg.is_mock:
             return _mock_complete(messages, purpose)
-        if not cfg.api_key:
+        if not cfg.api_key and not cfg.is_local:
             raise LLMError(
                 f"Thiếu API key cho provider '{cfg.provider}' (role {role}). "
                 f"Điền vào config.json hoặc export biến môi trường, "
                 f"hoặc đặt provider='mock' để chạy thử offline."
             )
         try:
-            if cfg.provider in ("openai", "deepseek"):
+            if cfg.provider in ("openai", "deepseek", "local"):
                 return self._openai(cfg, messages, temperature, max_tokens)
             if cfg.provider == "anthropic":
                 return self._anthropic(cfg, messages, temperature, max_tokens)
@@ -95,7 +96,7 @@ class LLM:
     # ================= OpenAI / DeepSeek =================
     def _openai(self, cfg: RoleConfig, messages, temperature, max_tokens) -> str:
         OpenAI = _import("openai").OpenAI
-        kwargs = {"api_key": cfg.api_key}
+        kwargs = {"api_key": cfg.api_key or "local"}
         if cfg.base_url:
             kwargs["base_url"] = cfg.base_url
         client = OpenAI(**kwargs)
@@ -189,7 +190,7 @@ def _mock_complete(messages, purpose: str | None) -> str:
             return json.dumps({"type": "task", "task": user,
                                "reply": ""}, ensure_ascii=False)
         return json.dumps({"type": "chat",
-                           "reply": f"Chào bạn 👋 Mình là Javis. Bạn vừa nói: “{user}”. "
+                           "reply": f"Chào bạn 👋 Mình là {AGENT_NAME}. Bạn vừa nói: “{user}”. "
                                     f"Mình có thể giúp gì nào?"}, ensure_ascii=False)
 
     if purpose == "plan":

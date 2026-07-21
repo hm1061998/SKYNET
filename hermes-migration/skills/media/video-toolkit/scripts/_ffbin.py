@@ -1,10 +1,10 @@
-"""Tìm ffmpeg/ffprobe: PATH trước, sau đó thư mục Tool của Javis."""
+"""Tìm ffmpeg/ffprobe: PATH trước, sau đó thư mục Tool của Agent."""
 import os
 import shutil
 
 FALLBACK_DIRS = [
-    os.environ.get("JAVIS_FFMPEG_DIR", ""),
-    r"F:\Project\Javis\Tool",
+    os.environ.get("AGENT_FFMPEG_DIR", ""),
+    r"F:\Project\Agent\Tool",
 ]
 
 

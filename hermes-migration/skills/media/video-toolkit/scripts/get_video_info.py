@@ -20,7 +20,7 @@ def main() -> int:
         return 1
     ffprobe = ffbin("ffprobe")
     if not ffprobe:
-        print(json.dumps({"success": False, "error": "Không tìm thấy ffprobe (PATH hoặc F:\\Project\\Javis\\Tool)."}, ensure_ascii=False))
+        print(json.dumps({"success": False, "error": "Không tìm thấy ffprobe (PATH hoặc F:\\Project\\Agent\\Tool)."}, ensure_ascii=False))
         return 1
 
     cmd = [ffprobe, "-v", "quiet", "-print_format", "json",

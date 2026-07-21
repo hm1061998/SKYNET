@@ -1,4 +1,4 @@
-# Javis / Skill Agent — phụ thuộc
+# Skill Agent — phụ thuộc
 #
 # LLM SDK: chỉ cần cài của provider bạn dùng. Agent sẽ TỰ cài khi cần,
 # nên bạn có thể bỏ trống file này. Liệt kê ở đây cho tiện.

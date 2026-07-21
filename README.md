@@ -1,5 +1,13 @@
 # Skill Agent — AI Agent tự sinh kỹ năng
 
+Tên hiển thị và từ khóa đánh thức của Agent được cấu hình tập trung trong
+`agent.config.json`. Đổi `name` tại đây sẽ cập nhật giao diện, tiêu đề trình
+duyệt, gợi ý giọng nói và console server.
+
+Nếu tên tiếng Anh bị TTS đọc sai, đặt `speechName` thành phiên âm tiếng Việt
+(ví dụ `SKYNET` dùng `X-kai-nét`). Giá trị này chỉ áp dụng khi phát giọng nói;
+giao diện và nội dung văn bản vẫn giữ nguyên `name`.
+
 ## Kiến trúc
 
 ```
@@ -169,7 +177,7 @@ python selftest.py   # kiểm tra cả luồng: chat, kế hoạch, tự sinh + 
 
 ## Bộ nhớ (memory)
 
-Javis có bộ nhớ hai tầng, lưu trên đĩa trong thư mục `memory/` — không cần thư viện ngoài:
+Agent có bộ nhớ hai tầng, lưu trên đĩa trong thư mục `memory/` — không cần thư viện ngoài:
 
 - **Ngắn hạn (hội thoại):** mỗi lượt chat được ghi lại theo phiên (`memory/chat_<session>.jsonl`).
   Trước khi gọi model, agent nạp vài lượt gần nhất vào ngữ cảnh.
@@ -190,14 +198,14 @@ m.context_block("resize ảnh") # -> khối ký ức + hội thoại để nhét
 ## Tool kiểu Hermes (function-calling)
 
 Mỗi skill (`SKILL_META`) được "dịch" sang **JSON Schema chuẩn** giống Hermes / OpenAI function-calling,
-để Javis nói cùng ngôn ngữ tool với các model fine-tune theo Hermes:
+để Agent nói cùng ngôn ngữ tool với các model fine-tune theo Hermes:
 
 ```python
 agent.tool_schemas()   # [{"type":"function","function":{"name","description","parameters"}}, ...]
 agent.tools_prompt()   # system prompt liệt kê mọi tool trong <tools>...</tools>
 ```
 
-Model gọi tool bằng cú pháp Hermes, và Javis parse lại được:
+Model gọi tool bằng cú pháp Hermes, và Agent parse lại được:
 
 ```
 <tool_call>{"name": "resize_image", "arguments": {"input_path": "a.jpg", "width": 800}}</tool_call>
@@ -212,7 +220,7 @@ Cơ chế registry + tự sinh skill vẫn giữ nguyên; đây chỉ là lớp 
 
 ## Vòng đời một skill (sinh → kiểm thử → nhớ → tái dùng)
 
-Khi gặp tác vụ chưa có skill, Javis KHÔNG chạy mù. Quy trình:
+Khi gặp tác vụ chưa có skill, Agent KHÔNG chạy mù. Quy trình:
 
 1. **Tìm lại trước khi sinh.** Khớp registry (lexical/LLM). Nếu không khớp, **hỏi bộ nhớ** (`_recall_skill`) xem đã từng dùng skill nào cho việc tương tự — memory tham gia chọn skill.
 2. **Sinh skill mới** (nếu vẫn không có) — file `.py` kèm `SKILL_META` có **mô tả ngắn**.
@@ -226,7 +234,7 @@ Phân biệt "lỗi code" và "lỗi dữ liệu" dựa vào cờ `_crashed` do 
 
 ## Tự phục hồi khi chạy lỗi
 
-Khi một skill chạy **thất bại**, Javis không bỏ cuộc ngay mà tự khắc phục (`_recover`, tối đa `MAX_RECOVER` vòng):
+Khi một skill chạy **thất bại**, Agent không bỏ cuộc ngay mà tự khắc phục (`_recover`, tối đa `MAX_RECOVER` vòng):
 
 1. **Thiếu thư viện Python** (skill trả `"pip install X"` hoặc `No module named 'X'`) → tự chạy `pip install X --break-system-packages` rồi thử lại. Cài được nhiều gói nối tiếp, mỗi gói thử một lần.
 2. **Thiếu công cụ hệ thống** (vd `ffmpeg`, `ffprobe`, `tesseract`, `yt-dlp`...) → tự cài qua trình quản lý gói của HĐH: `winget`/`choco` (Windows), `brew` (macOS), `apt-get` (Linux) rồi thử lại.
@@ -234,7 +242,7 @@ Khi một skill chạy **thất bại**, Javis không bỏ cuộc ngay mà tự 
 4. **Tự điền tham số** (`_self_fill`): đặt tên mặc định cho tham số đầu ra; **quét thư mục làm việc** tìm tệp khớp loại (video/audio/ảnh); nhờ **LLM suy luận** từ yêu cầu + danh sách tệp + lỗi trước.
 5. **Hỏi lại người dùng** nếu vẫn thiếu tham số **bắt buộc**: trả `needs_input` + `ask`; dashboard hiện câu hỏi và đọc to để bạn bổ sung.
 
-Ví dụ "tạo biên bản cuộc họp từ video" mà quên đính kèm đường dẫn: nếu trong thư mục có đúng một tệp video, Javis tự dùng; thiếu `ffmpeg` thì tự cài; nếu vẫn bí thì hỏi lại đúng thứ còn thiếu.
+Ví dụ "tạo biên bản cuộc họp từ video" mà quên đính kèm đường dẫn: nếu trong thư mục có đúng một tệp video, Agent tự dùng; thiếu `ffmpeg` thì tự cài; nếu vẫn bí thì hỏi lại đúng thứ còn thiếu.
 
 ## Tác vụ đa bước (pipeline)
 
@@ -242,7 +250,7 @@ Với yêu cầu **ghép nhiều thao tác** (vd "chia nhỏ video, tách phụ 
 
 ## Dev auto-reload (server)
 
-`server.py` tự **nạp lại code** khi `core/*.py` thay đổi (so `mtime` mỗi request) — sửa code xong chỉ cần thao tác lại trên dashboard, khỏi tắt/mở lại server. Nếu `config.json` hoặc skill đang sửa dở gây lỗi, server **giữ nguyên bản đang chạy** và thử lại ở lần đổi kế tiếp. Tắt tính năng: đặt biến môi trường `JAVIS_NO_RELOAD=1`.
+`server.py` tự **nạp lại code** khi `core/*.py` thay đổi (so `mtime` mỗi request) — sửa code xong chỉ cần thao tác lại trên dashboard, khỏi tắt/mở lại server. Nếu `config.json` hoặc skill đang sửa dở gây lỗi, server **giữ nguyên bản đang chạy** và thử lại ở lần đổi kế tiếp. Tắt tính năng: đặt biến môi trường `AGENT_NO_RELOAD=1`.
 
 ## Cấu trúc dự án
 
@@ -257,4 +265,4 @@ plans/        # kế hoạch HTML
 memory/       # bộ nhớ: facts.jsonl (dài hạn) + chat_<session>.jsonl (hội thoại)
 dashboard/    # giao diện web (chat + giọng nói)
 ```
-"# Javis" 
+"# AI Agent"

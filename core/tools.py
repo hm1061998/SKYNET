@@ -1,16 +1,17 @@
-"""Chuẩn hoá skill của Javis sang định dạng TOOL kiểu Hermes / OpenAI function-calling.
+"""Chuẩn hoá skill của Agent sang định dạng TOOL kiểu Hermes / OpenAI function-calling.
 
-Ý tưởng: registry của Javis đã có `SKILL_META` (name + description + params). Ở đây ta
+Ý tưởng: registry của Agent đã có `SKILL_META` (name + description + params). Ở đây ta
 'dịch' nó sang JSON Schema chuẩn để:
 
   • đưa cho model dưới dạng danh sách <tools> (giống Hermes),
   • cho model gọi tool bằng cú pháp <tool_call>{"name":..., "arguments":{...}}</tool_call>,
   • parse lại tool_call đó thành (name, arguments) để agent thực thi.
 
-Nhờ vậy Javis nói cùng 'ngôn ngữ tool' với các model được fine-tune theo Hermes, đồng thời
+Nhờ vậy Agent nói cùng 'ngôn ngữ tool' với các model được fine-tune theo Hermes, đồng thời
 vẫn giữ nguyên cơ chế registry + tự sinh skill sẵn có.
 """
 from __future__ import annotations
+from .identity import AGENT_NAME
 
 import json
 import re
@@ -66,7 +67,7 @@ def registry_to_schemas(registry) -> list[dict]:
 
 
 # Hệ thống prompt kiểu Hermes: liệt kê tool trong <tools>, yêu cầu gọi bằng <tool_call>.
-_HERMES_SYS = """Bạn là Javis — trợ lý gọi công cụ (function calling). Bạn có các công cụ sau, \
+_HERMES_SYS = """Bạn là {agent_name} — trợ lý gọi công cụ (function calling). Bạn có các công cụ sau, \
 mô tả bằng JSON Schema trong cặp thẻ <tools></tools>:
 
 <tools>
@@ -84,7 +85,7 @@ ngoài danh sách trên."""
 def hermes_system_prompt(schemas: list[dict]) -> str:
     """Dựng system prompt kiểu Hermes từ danh sách tool schema."""
     tools = "\n".join(json.dumps(s, ensure_ascii=False) for s in schemas)
-    return _HERMES_SYS.format(tools=tools)
+    return _HERMES_SYS.format(agent_name=AGENT_NAME, tools=tools)
 
 
 _TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.S)

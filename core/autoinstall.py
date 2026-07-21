@@ -1,7 +1,7 @@
 """Tự động cài package Python khi thiếu.
 
 Dùng chung cho registry (lỗi import lúc nạp skill) và orchestrator (lỗi lúc chạy skill).
-Tắt bằng biến môi trường JAVIS_NO_AUTO_INSTALL=1.
+Tắt bằng biến môi trường AGENT_NO_AUTO_INSTALL=1.
 """
 from __future__ import annotations
 import importlib
@@ -49,7 +49,7 @@ _VALID_PKG = re.compile(r"^[A-Za-z0-9_.\-\[\]=<>,!~ ]+$")
 
 
 def enabled() -> bool:
-    return os.environ.get("JAVIS_NO_AUTO_INSTALL", "").strip() not in ("1", "true", "yes")
+    return os.environ.get("AGENT_NO_AUTO_INSTALL", "").strip() not in ("1", "true", "yes")
 
 
 def pip_name(module: str) -> str:
@@ -82,7 +82,7 @@ def pip_install(pkg: str, log=None, timeout: int = 300) -> bool:
         _log(f"[!] Tên gói không hợp lệ, bỏ qua: {pkg}")
         return False
     if not enabled():
-        _log("[!] Auto-install đang tắt (JAVIS_NO_AUTO_INSTALL=1).")
+        _log("[!] Auto-install đang tắt (AGENT_NO_AUTO_INSTALL=1).")
         return False
     _log(f"[>] pip install {pkg} ...")
     try:

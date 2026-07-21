@@ -1,5 +1,5 @@
 {
-  "name": "javis-dashboard",
+  "name": "agent-dashboard",
   "private": true,
   "version": "1.0.0",
   "packageManager": "yarn@1.22.22",

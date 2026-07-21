@@ -1,4 +1,4 @@
-"""Bộ nhớ cho Javis — hai tầng, lưu trên đĩa (không cần thư viện ngoài).
+"""Bộ nhớ cho Agent — hai tầng, lưu trên đĩa (không cần thư viện ngoài).
 
   • NGẮN HẠN (working):  lịch sử hội thoại của phiên hiện tại — ai nói gì, theo thứ tự.
   • DÀI HẠN (facts):     những điều đáng nhớ (sở thích, thông tin, kết quả task đã làm),
@@ -7,7 +7,7 @@
 Thiết kế theo tinh thần "agent có trí nhớ": mỗi lượt chat được ghi lại, mỗi task xong
 sinh ra một "fact"; trước khi gọi LLM, agent nạp phần ký ức LIÊN QUAN vào system prompt.
 
-Contract (dict) đồng nhất với phần còn lại của Javis. Không phụ thuộc thư viện ngoài.
+Contract (dict) đồng nhất với phần còn lại của Agent. Không phụ thuộc thư viện ngoài.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import re
 import time
 import unicodedata
 from pathlib import Path
+from .identity import AGENT_NAME
 
 from . import MEMORY_DIR
 
@@ -182,7 +183,7 @@ class Memory:
         # bỏ lượt cuối nếu nó chính là câu user hiện tại (tránh lặp)
         convo = [h for h in hist if h["role"] in ("user", "assistant")]
         if convo:
-            lines = [f"{'Bạn' if h['role']=='user' else 'Javis'}: {h['content']}" for h in convo]
+            lines = [f"{'Bạn' if h['role']=='user' else AGENT_NAME}: {h['content']}" for h in convo]
             parts.append("HỘI THOẠI GẦN ĐÂY:\n" + "\n".join(lines))
 
         return "\n\n".join(parts)

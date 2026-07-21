@@ -96,7 +96,7 @@ def check(name, cond, extra=""):
 def main():
     before = {p.name for p in SKILLS_DIR.glob("*.py")}
     plans_before = {p.name for p in PLANS_DIR.glob("*.html")}
-    mem_dir = tempfile.mkdtemp(prefix="javis_mem_")
+    mem_dir = tempfile.mkdtemp(prefix="agent_mem_")
     agent = SkillAgent(MOCK, memory=Memory(root=mem_dir, session="selftest"))
 
     print("\n[1] Registry nap skill builtin")
@@ -105,7 +105,7 @@ def main():
     check("detect_scenes co mat", "detect_scenes" in names, f"(tong {len(names)} skill)")
 
     print("\n[2] Model chat - tro chuyen")
-    r = agent.handle_message("xin chao Javis, ban khoe khong?")
+    r = agent.handle_message("xin chao tro ly, ban khoe khong?")
     check("phan loai = chat", r.get("mode") == "chat")
     check("co cau tra loi", bool(r.get("reply")), f"-> {str(r.get('reply'))[:50]}")
 

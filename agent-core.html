@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>JAVIS — Lõi kỹ năng</title>
+<title>AI Agent — Lõi kỹ năng</title>
 <style>
   :root{
     --cyan:#4fe3ff; --teal:#50f6c8; --mag:#e85cff; --ink:#7ea0c8;
@@ -13,7 +13,7 @@
     font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; color:#dCEBFF; }
 
   /* ===== container: co giãn theo khung cha, nhúng vào dashboard được ===== */
-  #javis-core{ position:relative; width:100%; height:100vh; }
+  #agent-core{ position:relative; width:100%; height:100vh; }
   #scene{ position:absolute; inset:0; display:block; }
 
   /* ===== lớp UI phủ trên ===== */
@@ -63,11 +63,11 @@
 </style>
 </head>
 <body>
-<div id="javis-core">
+<div id="agent-core">
   <canvas id="scene"></canvas>
 
   <div class="ui brand">
-    <h1>JAVIS</h1>
+    <h1 id="agent-name">AI Agent</h1>
     <p>Lõi kỹ năng • càng nhiều kỹ năng, càng nhiều vector</p>
   </div>
 
@@ -93,7 +93,11 @@
   "use strict";
 
   // ================= Thiết lập canvas =================
-  const root = document.getElementById('javis-core');
+const root = document.getElementById('agent-core');
+fetch('./agent.config.json').then(r=>r.json()).then(identity=>{
+  const name=String(identity.name||'AI Agent'); document.title=name+' — Lõi kỹ năng';
+  document.getElementById('agent-name').textContent=name;
+}).catch(()=>{});
   const canvas = document.getElementById('scene');
   const ctx = canvas.getContext('2d');
   let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);

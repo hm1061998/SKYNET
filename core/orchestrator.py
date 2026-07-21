@@ -18,12 +18,13 @@ from . import tools as tools_mod
 from .config import Config
 from .generator import generate, fix, validate, GeneratorError
 from .llm import LLM, extract_json
+from .identity import AGENT_NAME
 from .memory import Memory
 from .registry import Registry
 from .runner import run_skill
 
 _CLASSIFY_SYS = (
-    "Bạn là Javis, trợ lý AI tự sinh kỹ năng. Bạn CÓ BỘ NHỚ DÀI HẠN lưu trên đĩa — "
+    f"Bạn là {AGENT_NAME}, trợ lý AI tự sinh kỹ năng. Bạn CÓ BỘ NHỚ DÀI HẠN lưu trên đĩa — "
     "TUYỆT ĐỐI KHÔNG nói rằng bạn không thể ghi nhớ. Với mỗi tin nhắn, phân loại:\n"
     '- "remember": người dùng muốn bạn GHI NHỚ một thông tin lâu dài (đường dẫn, sở thích, quy ước...).\n'
     '- "task": yêu cầu thao tác với tệp/ảnh/video/âm thanh/dữ liệu, tải, chuyển đổi, tạo ra thứ gì đó...\n'
@@ -205,7 +206,7 @@ class SkillAgent:
             return {"mode": "plan", "task": task, "steps": steps,
                     "plan_file": path.name, "plan_url": f"/plans/{path.name}"}
 
-        reply = data.get("reply") or "Mình nghe đây, bạn cần Javis giúp gì?"
+        reply = data.get("reply") or f"Mình nghe đây, bạn cần {AGENT_NAME} giúp gì?"
         self.memory.add_turn("assistant", reply)
         return {"mode": "chat", "reply": reply}
 
@@ -461,7 +462,7 @@ class SkillAgent:
 
     # ---------- chạy MỘT tác vụ đơn ----------
     def _run_single(self, task, _log, logs, context: str = "", force_new: bool = False) -> dict:
-        """Lưới an toàn: BUG NỘI BỘ của Javis cũng chỉ làm bước này thất bại
+        """Lưới an toàn: bug nội bộ của Agent cũng chỉ làm bước này thất bại
         (để vòng phục hồi/lập kế hoạch lại xử lý tiếp), không giết cả task."""
         import traceback
         try:
@@ -470,7 +471,7 @@ class SkillAgent:
             tb = traceback.format_exc(limit=5).strip()
             _log(f"[✗] LỖI NỘI BỘ khi chạy bước: {tb.splitlines()[-1]}")
             return {"success": False, "skill": None, "generated": False, "params": {},
-                    "result": None, "error": f"Lỗi nội bộ Javis: {tb}", "logs": logs}
+                    "result": None, "error": f"Lỗi nội bộ {AGENT_NAME}: {tb}", "logs": logs}
 
     def _run_single_inner(self, task, _log, logs, context: str = "", force_new: bool = False) -> dict:
         self.registry.load()

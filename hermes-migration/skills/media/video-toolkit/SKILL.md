@@ -1,23 +1,23 @@
 ---
 name: video-toolkit
-description: Xử lý video bằng ffmpeg/ffprobe — lấy thông tin video (duration, resolution, fps), tách âm thanh, phát hiện cảnh (scene detection). Di trú từ Javis Agent.
+description: Xử lý video bằng ffmpeg/ffprobe — lấy thông tin video (duration, resolution, fps), tách âm thanh, phát hiện cảnh (scene detection). Di trú từ Agent Agent.
 version: 1.0.0
-author: JCK (migrated from Javis Agent)
+author: JCK (migrated from Agent Agent)
 license: MIT
 metadata:
   hermes:
     tags: [Video, Media, FFmpeg]
     related_skills: [meeting-minutes]
     config:
-      - key: javis.ffmpeg_dir
+      - key: agent.ffmpeg_dir
         description: "Thư mục chứa ffmpeg.exe/ffprobe.exe nếu không có trên PATH"
-        default: "F:\\Project\\Javis\\Tool"
+        default: "F:\\Project\\Agent\\Tool"
         prompt: "Đường dẫn thư mục ffmpeg"
 ---
 
 # Video Toolkit
 
-Bộ công cụ xử lý video di trú từ Javis Agent. Tất cả script tự tìm ffmpeg/ffprobe trên PATH, nếu không có sẽ dùng thư mục cấu hình `javis.ffmpeg_dir` (mặc định `F:\Project\Javis\Tool`).
+Bộ công cụ xử lý video di trú từ Agent Agent. Tất cả script tự tìm ffmpeg/ffprobe trên PATH, nếu không có sẽ dùng thư mục cấu hình `agent.ffmpeg_dir` (mặc định `F:\Project\Agent\Tool`).
 
 ## When to Use
 
@@ -36,7 +36,7 @@ Mọi script in JSON ra stdout: `{"success": true/false, ...}`.
 
 ## Procedure
 
-1. Nếu người dùng nói "video mới nhất trong Uploads", tìm file video mới nhất bằng terminal (PowerShell: `Get-ChildItem 'F:\Project\Javis\Uploads' -Include *.mp4,*.mkv,*.avi,*.mov -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1`).
+1. Nếu người dùng nói "video mới nhất trong Uploads", tìm file video mới nhất bằng terminal (PowerShell: `Get-ChildItem 'F:\Project\Agent\Uploads' -Include *.mp4,*.mkv,*.avi,*.mov -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1`).
 2. Chạy script tương ứng ở Quick Reference với đường dẫn tuyệt đối (luôn đặt trong dấu ngoặc kép — tên file có thể chứa khoảng trắng và ký tự đặc biệt).
 3. Đọc JSON kết quả và báo lại bằng tiếng Việt.
 

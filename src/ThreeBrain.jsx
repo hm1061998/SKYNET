@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { AGENT_VISUAL_EVENT } from './agentConfig.js';
 
 const PALETTES = {
   idle: [0x50f6c8, 0x4fe3ff], listening: [0x4fe3ff, 0x50f6c8],
@@ -173,7 +174,7 @@ export default function ThreeBrain() {
         key.intensity = 32;
       }
     };
-    window.addEventListener('javis:visual', onVisual);
+    window.addEventListener(AGENT_VISUAL_EVENT, onVisual);
     setSkills(['get_video_info', 'detect_scenes']);
 
     const resize = () => {
@@ -238,7 +239,7 @@ export default function ThreeBrain() {
 
     return () => {
       cancelAnimationFrame(animationId);
-      window.removeEventListener('javis:visual', onVisual);
+      window.removeEventListener(AGENT_VISUAL_EVENT, onVisual);
       resizeObserver.disconnect();
       renderer.dispose();
       renderer.domElement.remove();

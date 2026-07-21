@@ -1,6 +1,6 @@
 """Skill builtin: liệt kê file & thư mục trong một đường dẫn.
 
-Cho phép Javis "đọc thư mục và lấy danh sách file" — có thể lọc theo mẫu (glob)
+Cho phép Agent "đọc thư mục và lấy danh sách file" — có thể lọc theo mẫu (glob)
 và tuỳ chọn duyệt đệ quy các thư mục con. Chỉ dùng thư viện chuẩn.
 """
 

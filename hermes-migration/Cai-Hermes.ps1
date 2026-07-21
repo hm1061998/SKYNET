@@ -1,12 +1,12 @@
-# Cai-Hermes.ps1 - Cai dat Hermes Agent va di tru du lieu tu Javis
-# Chay: powershell -ExecutionPolicy Bypass -File F:\Project\Javis\hermes-migration\Cai-Hermes.ps1
+# Cai-Hermes.ps1 - Cai dat Hermes Agent va di tru du lieu tu Agent
+# Chay: powershell -ExecutionPolicy Bypass -File F:\Project\Agent\hermes-migration\Cai-Hermes.ps1
 # (Thong bao viet khong dau de tranh loi font tren PowerShell cu)
 
 $ErrorActionPreference = "Stop"
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 $here = $PSScriptRoot
 
-Write-Host "=== Di tru Javis -> Hermes Agent ===" -ForegroundColor Cyan
+Write-Host "=== Di tru Agent -> Hermes Agent ===" -ForegroundColor Cyan
 
 # --- 1. Cai Hermes Agent (neu chua co) ---
 if (-not (Get-Command hermes -ErrorAction SilentlyContinue)) {
@@ -42,30 +42,30 @@ Copy-Item -Recurse -Force (Join-Path $here "skills\*") $skillsDst
 Write-Host "[3/4] Cau hinh model DeepSeek..." -ForegroundColor Cyan
 hermes config set model.provider deepseek
 hermes config set model.default deepseek-v4-pro
-hermes config set skills.config.javis.ffmpeg_dir "F:\Project\Javis\Tool"
-hermes config set skills.config.javis.uploads_dir "F:\Project\Javis\Uploads"
+hermes config set skills.config.agent.ffmpeg_dir "F:\Project\Agent\Tool"
+hermes config set skills.config.agent.uploads_dir "F:\Project\Agent\Uploads"
 
-# --- 4. API keys (doc tu config.json cua Javis; 'config set' tu luu key vao .env) ---
+# --- 4. API keys (doc tu config.json cua Agent; 'config set' tu luu key vao .env) ---
 Write-Host "[4/4] Ghi API key..." -ForegroundColor Cyan
-$javisCfgPath = Join-Path (Split-Path $here -Parent) "config.json"
-if (Test-Path $javisCfgPath) {
-    $javisCfg = Get-Content $javisCfgPath -Raw | ConvertFrom-Json
-    if (-not [string]::IsNullOrWhiteSpace($javisCfg.deepseek.api_key)) {
-        hermes config set DEEPSEEK_API_KEY "$($javisCfg.deepseek.api_key)"
+$agentCfgPath = Join-Path (Split-Path $here -Parent) "config.json"
+if (Test-Path $agentCfgPath) {
+    $agentCfg = Get-Content $agentCfgPath -Raw | ConvertFrom-Json
+    if (-not [string]::IsNullOrWhiteSpace($agentCfg.deepseek.api_key)) {
+        hermes config set DEEPSEEK_API_KEY "$($agentCfg.deepseek.api_key)"
         Write-Host "      Da ghi DEEPSEEK_API_KEY." -ForegroundColor Green
     }
-    if (-not [string]::IsNullOrWhiteSpace($javisCfg.openai.api_key)) {
-        hermes config set OPENAI_API_KEY "$($javisCfg.openai.api_key)"
+    if (-not [string]::IsNullOrWhiteSpace($agentCfg.openai.api_key)) {
+        hermes config set OPENAI_API_KEY "$($agentCfg.openai.api_key)"
         Write-Host "      Da ghi OPENAI_API_KEY (dung cho Whisper transcribe)." -ForegroundColor Green
     }
 } else {
-    Write-Host "      Khong tim thay config.json cua Javis - tu them key: hermes config set DEEPSEEK_API_KEY <key>" -ForegroundColor Yellow
+    Write-Host "      Khong tim thay config.json cua Agent - tu them key: hermes config set DEEPSEEK_API_KEY <key>" -ForegroundColor Yellow
 }
 
 Write-Host ""
 Write-Host "=== XONG! Buoc tiep theo ===" -ForegroundColor Green
 Write-Host "1. Kiem tra:  hermes doctor"
-Write-Host "2. Chay:  F:\Project\Javis\Chay-Hermes.bat   (hoac go 'hermes')"
-Write-Host "3. Trong phien dau tien, dan cau sau de Hermes ghi nho boi canh cu cua Javis:"
-Write-Host '   Doc file F:\Project\Javis\hermes-migration\MIGRATION-NOTES.md va luu cac fact quan trong vao memory'
+Write-Host "2. Chay:  F:\Project\Agent\Chay-Hermes.bat   (hoac go 'hermes')"
+Write-Host "3. Trong phien dau tien, dan cau sau de Hermes ghi nho boi canh cu cua Agent:"
+Write-Host '   Doc file F:\Project\Agent\hermes-migration\MIGRATION-NOTES.md va luu cac fact quan trong vao memory'
 Write-Host "4. Thu ngay:  'Tao bien ban cuoc hop tu video moi nhat trong Uploads'"

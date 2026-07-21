@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Skill Agent (Javis) — CLI.
+"""Skill Agent — CLI.
 
     python agent.py                         # chế độ tương tác
     python agent.py "resize ảnh a.jpg về 800x600"   # chạy một tác vụ

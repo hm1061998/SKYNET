@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Dashboard web cho Javis — chỉ dùng thư viện chuẩn (http.server), không cần Flask.
+"""Dashboard web cho Agent — chỉ dùng thư viện chuẩn (http.server), không cần Flask.
 
     python server.py            # mở http://127.0.0.1:8765
 
 - Đọc lại config.json MỖI request -> đổi API key xong chỉ cần tải lại trang, khỏi khởi động lại.
-- Tự NẠP LẠI CODE khi core/*.py thay đổi (dev auto-reload) — đặt JAVIS_NO_RELOAD=1 để tắt.
+- Tự NẠP LẠI CODE khi core/*.py thay đổi (dev auto-reload) — đặt AGENT_NO_RELOAD=1 để tắt.
 - In trạng thái key lúc khởi động; cảnh báo nếu cổng đã bị server cũ chiếm.
 """
 import glob
@@ -21,7 +21,8 @@ from urllib.parse import urlparse, parse_qs
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import core                                    # noqa: E402
-from core import PLANS_DIR, PROJECT_ROOT       # noqa: E402
+from core import CONFIG_PATH, PLANS_DIR, PROJECT_ROOT       # noqa: E402
+from core.identity import get_agent_name                    # noqa: E402
 from core import config as cfg_mod             # noqa: E402
 from core import llm as llm_mod                # noqa: E402
 from core import runner as runner_mod          # noqa: E402
@@ -36,11 +37,25 @@ from core.orchestrator import SkillAgent       # noqa: E402
 
 DASHBOARD_DIR = PROJECT_ROOT / "dashboard" / "dist"
 DASHBOARD = DASHBOARD_DIR / "index.html"
+AGENT_IDENTITY_PATH = PROJECT_ROOT / "agent.config.json"
 AGENT: SkillAgent | None = None
+
+
+def agent_name() -> str:
+    return get_agent_name()
 
 # ---- job nền: task chạy trong thread, UI poll log — không còn dính timeout trình duyệt ----
 JOBS: dict[str, dict] = {}
 _JOBS_LOCK = threading.Lock()
+
+MODEL_CATALOG = {
+    "openai": ["gpt-4o-mini", "gpt-4o", "o3-mini"],
+    "anthropic": ["claude-sonnet-4-5", "claude-haiku-4-5"],
+    "gemini": ["gemini-2.0-flash", "gemini-2.5-pro"],
+    "deepseek": ["deepseek-chat", "deepseek-reasoner"],
+    "local": ["deepseek-r1", "qwen2.5", "mistral", "gemma3"],
+    "mock": ["mock-1"],
+}
 
 
 def _start_job(agent: SkillAgent, task: str, steps=None) -> str:
@@ -82,7 +97,7 @@ def _core_mtime() -> float:
 def maybe_reload_code():
     """Nếu code trong core/ đã đổi, nạp lại module + tạo lại agent (giữ bộ nhớ trên đĩa)."""
     global AGENT, _CODE_MTIME
-    if os.environ.get("JAVIS_NO_RELOAD") == "1":
+    if os.environ.get("AGENT_NO_RELOAD") == "1":
         return
     try:
         mt = _core_mtime()
@@ -141,12 +156,53 @@ def key_status() -> str:
         rc = AGENT.config.resolve(role)
         if rc.is_mock:
             s = "mock"
+        elif rc.is_local:
+            s = "local"
         elif rc.api_key:
             s = "key …" + rc.api_key[-4:]
         else:
             s = "THIẾU KEY"
         parts.append(f"{role}={rc.provider}:{rc.model} [{s}]")
     return " | ".join(parts)
+
+
+def model_config_payload() -> dict:
+    roles = {}
+    for role in ("chat", "work"):
+        resolved = AGENT.config.resolve(role)
+        roles[role] = {"provider": resolved.provider, "model": resolved.model,
+                       "base_url": resolved.base_url or "", "ready": resolved.ready}
+    return {"roles": roles, "catalog": MODEL_CATALOG}
+
+
+def save_model_config(roles: dict) -> dict:
+    allowed_roles = {"chat", "work"}
+    if not isinstance(roles, dict) or not roles or set(roles) - allowed_roles:
+        raise ValueError("Cấu hình role không hợp lệ")
+    current = Config.load(CONFIG_PATH).data
+    stored_roles = current.setdefault("roles", {})
+    for role, value in roles.items():
+        if not isinstance(value, dict):
+            raise ValueError(f"Cấu hình {role} không hợp lệ")
+        provider = str(value.get("provider") or "").strip().lower()
+        model = str(value.get("model") or "").strip()
+        if provider not in MODEL_CATALOG:
+            raise ValueError(f"Provider không hỗ trợ: {provider}")
+        if not model or len(model) > 120 or any(ch in model for ch in "\r\n\0"):
+            raise ValueError(f"Tên model cho {role} không hợp lệ")
+        saved_role = {"provider": provider, "model": model}
+        if provider == "local":
+            base_url = str(value.get("base_url") or "http://127.0.0.1:11434/v1").strip().rstrip("/")
+            if len(base_url) > 300 or not base_url.startswith(("http://", "https://")):
+                raise ValueError(f"Endpoint local cho {role} không hợp lệ")
+            saved_role["base_url"] = base_url
+        stored_roles[role] = saved_role
+    temp_path = CONFIG_PATH.with_suffix(".json.tmp")
+    temp_path.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(temp_path, CONFIG_PATH)
+    AGENT.config = Config.load(CONFIG_PATH)
+    AGENT.llm.config = AGENT.config
+    return model_config_payload()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -191,6 +247,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"config": AGENT.config.describe(),
                                "keys": key_status(),
                                "skills": AGENT.registry.load().names()})
+        if self.path == "/api/model-config":
+            refresh_config()
+            return self._json(model_config_payload())
         if self.path.startswith("/plans/"):
             name = os.path.basename(self.path[len("/plans/"):])
             return self._file(PLANS_DIR / name)
@@ -243,6 +302,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(AGENT.handle_message(text))
             except Exception as e:
                 return self._json({"mode": "chat", "reply": f"Lỗi: {e}"})
+        if self.path == "/api/model-config":
+            try:
+                return self._json({"ok": True, **save_model_config(body.get("roles"))})
+            except (ValueError, OSError) as e:
+                return self._json({"ok": False, "error": str(e)}, 400)
         if self.path == "/api/approve":
             task = (body.get("task") or "").strip()
             steps = body.get("steps") if isinstance(body.get("steps"), list) else None
@@ -279,7 +343,7 @@ def main():
     url = f"http://127.0.0.1:{port}"
 
     print("=" * 52)
-    print("  JAVIS Dashboard")
+    print(f"  {agent_name()} Dashboard")
     print("  " + url)
     print("  " + key_status())
     print("=" * 52)
@@ -289,7 +353,7 @@ def main():
     try:
         httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     except OSError as e:
-        print(f"\n[!] KHÔNG mở được cổng {port}. Có thể một server Javis CŨ vẫn đang chạy.")
+        print(f"\n[!] KHÔNG mở được cổng {port}. Có thể một server {agent_name()} CŨ vẫn đang chạy.")
         print("    → Đóng hết cửa sổ đen cũ (hoặc Task Manager > kết thúc python.exe) rồi chạy lại.")
         print(f"    (chi tiết: {e})")
         input("\nNhấn Enter để thoát...")
@@ -300,7 +364,7 @@ def main():
         webbrowser.open(url)
     except Exception:
         pass
-    print("[i] Đang chạy… đóng cửa sổ này để tắt Javis.")
+    print(f"[i] Đang chạy… đóng cửa sổ này để tắt {agent_name()}.")
     httpd.serve_forever()
 
 

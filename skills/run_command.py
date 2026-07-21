@@ -1,6 +1,6 @@
 """Skill builtin: chạy một lệnh shell / cmd và trả về kết quả.
 
-Cho phép Javis thực thi lệnh dòng lệnh (Windows: cmd; Linux/macOS: sh) — ví dụ
+Cho phép Agent thực thi lệnh dòng lệnh (Windows: cmd; Linux/macOS: sh) — ví dụ
 'dir', 'ipconfig', 'python --version', 'git status'... Chỉ dùng thư viện chuẩn.
 
 An toàn cơ bản: có timeout, bắt lỗi, và chặn vài lệnh phá huỷ rõ ràng. Vì đây là

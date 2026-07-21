@@ -22,7 +22,7 @@ def main() -> int:
         return 1
     ffmpeg = ffbin("ffmpeg")
     if not ffmpeg:
-        print(json.dumps({"success": False, "error": "Không tìm thấy ffmpeg (PATH hoặc F:\\Project\\Javis\\Tool)."}, ensure_ascii=False))
+        print(json.dumps({"success": False, "error": "Không tìm thấy ffmpeg (PATH hoặc F:\\Project\\Agent\\Tool)."}, ensure_ascii=False))
         return 1
 
     ext = ".mp3" if args.mp3 else ".wav"

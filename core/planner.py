@@ -4,6 +4,7 @@ import html
 import time
 
 from . import PLANS_DIR
+from .identity import AGENT_NAME
 
 
 def new_plan_path() -> "os.PathLike":
@@ -17,7 +18,7 @@ def render_plan_html(task: str, steps: list[str], path=None):
         f'      <li><span class="num">{i+1}</span><span class="txt">{html.escape(str(s))}</span></li>'
         for i, s in enumerate(steps)
     )
-    doc = _TEMPLATE.format(task=html.escape(task), items=items,
+    doc = _TEMPLATE.format(agent_name=html.escape(AGENT_NAME), task=html.escape(task), items=items,
                            ts=time.strftime("%H:%M:%S %d/%m/%Y"))
     path.write_text(doc, encoding="utf-8")
     return path
@@ -26,7 +27,7 @@ def render_plan_html(task: str, steps: list[str], path=None):
 _TEMPLATE = """<!DOCTYPE html>
 <html lang="vi"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kế hoạch — Javis</title>
+<title>Kế hoạch — {agent_name}</title>
 <style>
   body{{ margin:0; font-family:"Segoe UI",system-ui,sans-serif; background:#05070f; color:#dCEBFF; padding:26px; }}
   .card{{ max-width:680px; margin:auto; background:rgba(12,18,34,.6);

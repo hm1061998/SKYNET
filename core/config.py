@@ -20,6 +20,7 @@ DEFAULT_MODELS = {
     "gemini": "gemini-2.0-flash",
     "openai": "gpt-4o-mini",
     "deepseek": "deepseek-chat",
+    "local": "deepseek-r1",
     "mock": "mock-1",
 }
 
@@ -42,9 +43,13 @@ class RoleConfig:
         return self.provider == "mock"
 
     @property
+    def is_local(self) -> bool:
+        return self.provider == "local"
+
+    @property
     def ready(self) -> bool:
         """Có thể gọi được không (mock luôn sẵn sàng; còn lại cần key)."""
-        return self.is_mock or bool(self.api_key)
+        return self.is_mock or self.is_local or bool(self.api_key)
 
 
 class Config:
@@ -87,7 +92,7 @@ class Config:
         if not api_key and provider in ENV_KEYS:
             api_key = os.environ.get(ENV_KEYS[provider], "")
 
-        base_url = pcfg.get("base_url") or DEFAULT_BASE_URLS.get(provider)
+        base_url = rc.get("base_url") or pcfg.get("base_url") or DEFAULT_BASE_URLS.get(provider)
 
         return RoleConfig(role=role, provider=provider, model=model,
                           api_key=api_key, base_url=base_url)
@@ -95,6 +100,6 @@ class Config:
     def describe(self) -> str:
         chat, work = self.resolve("chat"), self.resolve("work")
         def one(r: RoleConfig):
-            k = "mock" if r.is_mock else ("có key" if r.api_key else "THIẾU key")
+            k = "mock" if r.is_mock else ("local" if r.is_local else ("có key" if r.api_key else "THIẾU key"))
             return f"{r.role}={r.provider}:{r.model} ({k})"
         return f"{one(chat)} | {one(work)}"
