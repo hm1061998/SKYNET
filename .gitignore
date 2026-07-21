@@ -1,5 +1,59 @@
-# Ignore config file
+# Local configuration and secrets
 config.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
 
-# Ignore Tool folder
+# Local/generated tools
 Tool/
+
+# React / Yarn / Vite
+node_modules/
+dashboard/dist/
+.vite/
+coverage/
+*.tsbuildinfo
+yarn-error.log
+yarn-debug.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Python bytecode, environments and tool caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Runtime and temporary files
+*.log
+*.pid
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+.cache/
+tmp/
+temp/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+Desktop.ini

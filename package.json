@@ -1,0 +1,21 @@
+{
+  "name": "javis-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "packageManager": "yarn@1.22.22",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "yarn build && python server.py"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "three": "latest"
+  },
+  "devDependencies": {
+    "yarn": "1.22.22"
+  }
+}
