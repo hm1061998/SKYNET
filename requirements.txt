@@ -1,0 +1,16 @@
+# Javis / Skill Agent — phụ thuộc
+#
+# LLM SDK: chỉ cần cài của provider bạn dùng. Agent sẽ TỰ cài khi cần,
+# nên bạn có thể bỏ trống file này. Liệt kê ở đây cho tiện.
+#
+openai>=1.0.0            # dùng cho provider: openai  VÀ  deepseek (base_url)
+# anthropic>=0.39.0      # provider: anthropic
+# google-generativeai>=0.8.0   # provider: gemini
+#
+# --- Không cần thư viện nào cho: CLI, dashboard, registry, mock ---
+# Dashboard chạy bằng http.server chuẩn của Python (không cần Flask).
+#
+# --- Phụ thuộc của TỪNG skill (cài khi skill cần) ---
+# ffmpeg/ffprobe  -> get_video_info  (cài ở mức hệ điều hành)
+# scenedetect     -> detect_scenes   (pip install scenedetect)
+# pillow          -> resize/convert ảnh (nếu skill sinh ra cần)

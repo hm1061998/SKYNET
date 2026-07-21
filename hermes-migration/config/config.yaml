@@ -1,0 +1,23 @@
+# Cấu hình Hermes Agent — di trú từ Javis (F:\Project\Javis\config.json)
+# Vị trí đích: %USERPROFILE%\.hermes\config.yaml
+# API key KHÔNG nằm ở đây — nằm trong %USERPROFILE%\.hermes\.env
+
+model:
+  provider: "deepseek"
+  default: "deepseek-v4-pro"     # model "work" cũ của Javis; đổi thành deepseek-chat nếu muốn rẻ/nhanh
+
+# Nén hội thoại dài bằng model rẻ hơn (tương đương role "chat" cũ của Javis)
+auxiliary:
+  compression:
+    provider: "main"
+    model: "deepseek-chat"
+
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+
+skills:
+  config:
+    javis:
+      ffmpeg_dir: "F:\\Project\\Javis\\Tool"
+      uploads_dir: "F:\\Project\\Javis\\Uploads"

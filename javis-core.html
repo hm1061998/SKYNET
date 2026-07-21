@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JAVIS — Lõi kỹ năng</title>
+<style>
+  :root{
+    --cyan:#4fe3ff; --teal:#50f6c8; --mag:#e85cff; --ink:#7ea0c8;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:#02030a; overflow:hidden;
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; color:#dCEBFF; }
+
+  /* ===== container: co giãn theo khung cha, nhúng vào dashboard được ===== */
+  #javis-core{ position:relative; width:100%; height:100vh; }
+  #scene{ position:absolute; inset:0; display:block; }
+
+  /* ===== lớp UI phủ trên ===== */
+  .ui{ position:absolute; z-index:5; pointer-events:none; }
+  .ui *{ pointer-events:auto; }
+
+  .brand{ top:22px; left:26px; }
+  .brand h1{ margin:0; font-size:30px; letter-spacing:.42em; font-weight:700;
+    background:linear-gradient(90deg,#8ff6ff,#7effd0,#c79bff);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 0 26px rgba(80,246,200,.25); }
+  .brand p{ margin:6px 0 0; font-size:12.5px; letter-spacing:.06em; color:var(--ink); max-width:320px; }
+
+  .stats{ top:26px; right:26px; text-align:right; }
+  .stat{ display:inline-block; margin-left:26px; }
+  .stat .n{ font-size:30px; font-weight:700; font-variant-numeric:tabular-nums;
+    text-shadow:0 0 20px rgba(79,227,255,.45); }
+  .stat.sk .n{ color:var(--teal); }
+  .stat.vec .n{ color:var(--cyan); }
+  .stat .l{ display:block; font-size:10.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--ink); margin-top:2px; }
+
+  .panel{ left:26px; bottom:26px; width:340px; max-width:calc(100% - 52px);
+    padding:16px 18px 18px; border-radius:16px;
+    background:rgba(10,16,32,.55); backdrop-filter:blur(9px);
+    border:1px solid rgba(90,180,220,.16); box-shadow:0 10px 40px rgba(0,0,0,.4); }
+  .panel .row{ display:flex; align-items:baseline; justify-content:space-between; }
+  .panel .row b{ font-size:13px; letter-spacing:.04em; color:#eaf6ff; }
+  .panel .row .val{ font-size:13px; color:var(--teal); font-variant-numeric:tabular-nums; }
+
+  input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:5px; margin:14px 0 4px;
+    border-radius:6px; background:linear-gradient(90deg,#50f6c8,#4fe3ff 55%,#8a6cff); outline:none; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
+    background:#eafcff; border:2px solid #4fe3ff; cursor:pointer; box-shadow:0 0 14px rgba(79,227,255,.9); }
+  input[type=range]::-moz-range-thumb{ width:18px; height:18px; border-radius:50%;
+    background:#eafcff; border:2px solid #4fe3ff; cursor:pointer; box-shadow:0 0 14px rgba(79,227,255,.9); }
+
+  .opts{ display:flex; gap:16px; align-items:center; margin-top:12px; font-size:12px; color:var(--ink); }
+  .opts label{ display:flex; gap:7px; align-items:center; cursor:pointer; user-select:none; }
+  .opts input{ accent-color:#4fe3ff; cursor:pointer; }
+
+  .hint{ right:26px; bottom:26px; font-size:11px; letter-spacing:.05em; color:rgba(126,160,200,.7); text-align:right; }
+
+  @media (max-width:560px){
+    .brand h1{ font-size:22px; } .stat .n{ font-size:22px; } .stat{ margin-left:16px; }
+    .hint{ display:none; }
+  }
+</style>
+</head>
+<body>
+<div id="javis-core">
+  <canvas id="scene"></canvas>
+
+  <div class="ui brand">
+    <h1>JAVIS</h1>
+    <p>Lõi kỹ năng • càng nhiều kỹ năng, càng nhiều vector</p>
+  </div>
+
+  <div class="ui stats">
+    <div class="stat sk"><span class="n" id="skN">0</span><span class="l">Kỹ năng</span></div>
+    <div class="stat vec"><span class="n" id="vecN">0</span><span class="l">Vector</span></div>
+  </div>
+
+  <div class="ui panel">
+    <div class="row"><b>Số kỹ năng</b><span class="val" id="skVal">24</span></div>
+    <input id="skill" type="range" min="1" max="120" value="24" />
+    <div class="opts">
+      <label><input id="lbl" type="checkbox" checked /> Hiện nhãn</label>
+      <label><input id="spin" type="checkbox" checked /> Tự xoay</label>
+    </div>
+  </div>
+
+  <div class="ui hint">Kéo để xoay • Lăn chuột để phóng to</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ================= Thiết lập canvas =================
+  const root = document.getElementById('javis-core');
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+  let cx = 0, cy = 0, R = 0;
+
+  function resize(){
+    W = root.clientWidth; H = root.clientHeight;
+    canvas.width = W * DPR; canvas.height = H * DPR;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    cx = W/2; cy = H/2; R = Math.min(W,H) * 0.36;
+  }
+  window.addEventListener('resize', resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(root);
+  resize();
+
+  // ================= Bảng màu + sprite quầng sáng =================
+  const COLORS = [
+    [80,246,200],  // 0 teal
+    [79,227,255],  // 1 cyan
+    [232,92,255],  // 2 magenta
+    [138,108,255], // 3 tím
+    [255,154,60],  // 4 cam
+    [235,245,255], // 5 trắng-xanh
+  ];
+  const rgba = (c,a)=>`rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+  function makeGlow(c){
+    const s=64, cv=document.createElement('canvas'); cv.width=cv.height=s;
+    const x=cv.getContext('2d');
+    const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+    g.addColorStop(0, rgba(c,1)); g.addColorStop(0.35, rgba(c,0.55)); g.addColorStop(1, rgba(c,0));
+    x.fillStyle=g; x.fillRect(0,0,s,s); return cv;
+  }
+  const SPRITE = COLORS.map(makeGlow);
+  const drawGlow = (i,x,y,r,a)=>{ ctx.globalAlpha=a; ctx.drawImage(SPRITE[i], x-r, y-r, r*2, r*2); ctx.globalAlpha=1; };
+
+  // ================= Danh sách tên kỹ năng (khớp Skill Agent) =================
+  const SKILL_NAMES = [
+    "Cắt video","Ghép video","Tải YouTube","Văn bản → giọng nói","Nhận dạng giọng nói",
+    "Đọc PDF","Tách trang PDF","Gộp PDF","OCR ảnh","Dịch văn bản",
+    "Tóm tắt","Gửi email","Đọc email","Lên lịch","Nhắc việc",
+    "Tìm kiếm web","Cào dữ liệu","Nén ảnh","Đổi định dạng ảnh","Xoá nền ảnh",
+    "Tạo ảnh AI","Sửa Excel","Vẽ biểu đồ","Phân tích dữ liệu","Tạo slide",
+    "Viết blog","Sinh mã","Chạy shell","Đổi tên file","Dọn thư mục",
+    "Sao lưu","Mã hoá","Giải nén","Tải file","Đổi tiền tệ",
+    "Thời tiết","Tin tức","Bản đồ","Ghi chú","Theo dõi chi tiêu",
+    "Tạo mã QR","Quét QR","Rút gọn link","Kiểm tra chính tả","Đọc RSS",
+    "Đăng mạng xã hội","Chatbot","Phân loại email","Lọc spam","Tạo mật khẩu",
+    "Giám sát web","Tự động điền form","Trích xuất bảng","CSV → JSON","Vẽ sơ đồ",
+    "Tạo hoá đơn","Nhận diện khuôn mặt","Đếm vật thể","Chuyển ngữ","Đặt lịch hẹn"
+  ];
+  const skillName = i => SKILL_NAMES[i] || ("Kỹ năng #" + (i+1));
+
+  // ================= Hình học: phân bố Fibonacci trên mặt cầu =================
+  function fibPoint(i, n){
+    const off = 2/n, inc = Math.PI*(3 - Math.sqrt(5));
+    const y = i*off - 1 + off/2;
+    const r = Math.sqrt(Math.max(0, 1 - y*y));
+    const phi = i*inc;
+    return [Math.cos(phi)*r, y, Math.sin(phi)*r];
+  }
+
+  // ---- các quầng sáng lớn (như ảnh) ----
+  const ORBS = [[0,0.92,0.18],[-0.82,0.30,0.34],[0.80,0.16,-0.34],[-0.28,-0.86,0.22],[0.42,-0.70,-0.40]]
+    .map(v=>{ const m=Math.hypot(v[0],v[1],v[2]); return [v[0]/m,v[1]/m,v[2]/m]; });
+
+  // ---- bụi sáng nền ----
+  const DUST = [];
+  (function buildDust(){
+    const M = 460;
+    for(let k=0;k<M;k++){
+      const u = Math.random()*2-1, t = Math.random()*Math.PI*2, r = Math.sqrt(1-u*u);
+      const spark = Math.random() < 0.14;
+      const rad = spark ? (1.05 + Math.random()*0.5) : (0.80 + Math.random()*0.28);
+      let ci;
+      const q = Math.random();
+      if (spark) ci = [2,3,4][Math.floor(Math.random()*3)];
+      else ci = q<0.5?1 : q<0.72?0 : q<0.9?5 : (q<0.96?3:2);
+      DUST.push({ x:r*Math.cos(t)*rad, y:u*rad, z:r*Math.sin(t)*rad,
+        ci, base:0.25+Math.random()*0.6, tw:Math.random()*Math.PI*2, sz:0.7+Math.random()*1.1 });
+    }
+  })();
+
+  // ================= Nodes (kỹ năng) + vectors (đường nối) =================
+  let nodes = [], edges = [], N = 24;
+
+  function buildNodes(n){
+    nodes = [];
+    for(let i=0;i<n;i++){
+      const p = fibPoint(i, n);
+      nodes.push({ x:p[0], y:p[1], z:p[2], ci:i%5, name:skillName(i), sx:0, sy:0, d:0 });
+    }
+  }
+
+  // Vector = cạnh nối 2 kỹ năng gần nhau trên mặt cầu.
+  // Càng nhiều kỹ năng → mật độ dày → số vector tăng vọt (siêu tuyến tính).
+  function buildEdges(){
+    edges = [];
+    const n = nodes.length;
+    if (n < 2) return;
+    const TH = 0.82;        // ngưỡng khoảng cách kết nối
+    const CAP = 6;          // tối đa mỗi node (giữ đẹp + mượt)
+    const seen = new Set();
+    for(let i=0;i<n;i++){
+      const a = nodes[i]; const ds = [];
+      for(let j=0;j<n;j++){ if(j===i) continue;
+        const b = nodes[j];
+        const d = Math.hypot(a.x-b.x, a.y-b.y, a.z-b.z);
+        ds.push([d,j]);
+      }
+      ds.sort((p,q)=>p[0]-q[0]);
+      let cnt=0;
+      for(let m=0;m<ds.length && cnt<CAP;m++){
+        const d=ds[m][0], j=ds[m][1];
+        if(m>=2 && d>TH) break;         // luôn nối >=2 hàng xóm gần nhất, còn lại theo ngưỡng
+        const key = i<j ? i+'-'+j : j+'-'+i;
+        if(seen.has(key)) { cnt++; continue; }
+        seen.add(key);
+        edges.push({ a:i, b:j, tint: Math.random()<0.82 ? [60,240,190] : [150,120,255] });
+        cnt++;
+      }
+    }
+  }
+
+  function rebuild(n){ N=n; buildNodes(n); buildEdges();
+    skN.textContent=n; vecN.textContent=edges.length; skVal.textContent=n; }
+
+  // ================= Xoay + tương tác =================
+  let rotY=0, rotX=-0.32, autoSpin=true, zoom=1;
+  let dragging=false, lastX=0, lastY=0, mx=-1e4, my=-1e4, hover=-1;
+
+  canvas.addEventListener('mousedown', e=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; });
+  window.addEventListener('mouseup', ()=> dragging=false);
+  window.addEventListener('mousemove', e=>{
+    const rc=canvas.getBoundingClientRect(); mx=e.clientX-rc.left; my=e.clientY-rc.top;
+    if(dragging){ rotY += (e.clientX-lastX)*0.006; rotX += (e.clientY-lastY)*0.006;
+      rotX=Math.max(-1.3,Math.min(1.3,rotX)); lastX=e.clientX; lastY=e.clientY; }
+  });
+  canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoom*=e.deltaY<0?1.06:0.94; zoom=Math.max(0.6,Math.min(2.2,zoom)); }, {passive:false});
+  // cảm ứng
+  canvas.addEventListener('touchstart', e=>{ dragging=true; lastX=e.touches[0].clientX; lastY=e.touches[0].clientY; }, {passive:true});
+  window.addEventListener('touchend', ()=> dragging=false);
+  canvas.addEventListener('touchmove', e=>{ const t=e.touches[0];
+    rotY += (t.clientX-lastX)*0.006; rotX += (t.clientY-lastY)*0.006; rotX=Math.max(-1.3,Math.min(1.3,rotX));
+    lastX=t.clientX; lastY=t.clientY; }, {passive:true});
+
+  // ================= Chiếu 3D → 2D =================
+  const CAM = 3.0;
+  function project(x,y,z){
+    // xoay Y
+    const cyy=Math.cos(rotY), syy=Math.sin(rotY);
+    let X = x*cyy + z*syy, Z = -x*syy + z*cyy, Y = y;
+    // xoay X
+    const cxx=Math.cos(rotX), sxx=Math.sin(rotX);
+    const Y2 = Y*cxx - Z*sxx, Z2 = Y*sxx + Z*cxx;
+    const s = (CAM/(CAM - Z2)) * R * zoom;
+    return { sx: cx + X*s, sy: cy + Y2*s, d:(Z2+1)/2 }; // d: 0 xa → 1 gần
+  }
+
+  // ================= Vòng lặp vẽ =================
+  let t=0;
+  function frame(){
+    t += 0.016;
+    if(autoSpin && !dragging) rotY += 0.0016;
+
+    // nền
+    ctx.globalCompositeOperation='source-over';
+    const bg=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(W,H)*0.72);
+    bg.addColorStop(0,'#0b1226'); bg.addColorStop(0.5,'#060a16'); bg.addColorStop(1,'#02030a');
+    ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+    ctx.globalCompositeOperation='lighter';
+
+    // quầng cầu mờ phía sau
+    drawGlow(1, cx, cy, R*1.35*zoom, 0.10);
+
+    // cạnh (vector)
+    for(let e=0; e<edges.length; e++){
+      const a=nodes[edges[e].a], b=nodes[edges[e].b];
+      const pa=project(a.x,a.y,a.z), pb=project(b.x,b.y,b.z);
+      const dep=(pa.d+pb.d)/2;
+      ctx.strokeStyle = rgba(edges[e].tint, 0.05 + 0.30*dep);
+      ctx.lineWidth = 0.6 + dep*0.8;
+      ctx.beginPath(); ctx.moveTo(pa.sx,pa.sy); ctx.lineTo(pb.sx,pb.sy); ctx.stroke();
+    }
+
+    // bụi sáng
+    for(let k=0;k<DUST.length;k++){
+      const p=DUST[k], pr=project(p.x,p.y,p.z);
+      const tw=0.6+0.4*Math.sin(t*1.6+p.tw);
+      drawGlow(p.ci, pr.sx, pr.sy, (1.4+3.2*pr.d)*p.sz, p.base*tw*(0.35+0.65*pr.d));
+    }
+
+    // quầng sáng lớn (orbs)
+    for(let o=0;o<ORBS.length;o++){
+      const v=ORBS[o], pr=project(v[0],v[1],v[2]);
+      const pulse=0.85+0.15*Math.sin(t*1.2+o);
+      drawGlow(5, pr.sx, pr.sy, R*(0.16+0.30*pr.d)*pulse*zoom, (0.10+0.5*pr.d)*pulse);
+    }
+
+    // nodes (kỹ năng) — tính vị trí + tìm node đang hover
+    hover=-1; let hoverD=18*18;
+    for(let i=0;i<nodes.length;i++){
+      const nd=nodes[i], pr=project(nd.x,nd.y,nd.z);
+      nd.sx=pr.sx; nd.sy=pr.sy; nd.d=pr.d;
+      const dx=pr.sx-mx, dy=pr.sy-my, dd=dx*dx+dy*dy;
+      if(dd<hoverD){ hoverD=dd; hover=i; }
+    }
+    for(let i=0;i<nodes.length;i++){
+      const nd=nodes[i]; const hot = (i===hover);
+      const g = (6 + 6*nd.d) * (hot?1.7:1);
+      drawGlow(nd.ci, nd.sx, nd.sy, g, (0.5+0.5*nd.d)*(hot?1:0.9));
+      drawGlow(5, nd.sx, nd.sy, (2.4+1.6*nd.d)*(hot?1.6:1), 0.6+0.4*nd.d); // lõi trắng
+    }
+
+    // nhãn tên (chữ nét, source-over)
+    if(showLabels){
+      ctx.globalCompositeOperation='source-over';
+      ctx.textBaseline='middle';
+      for(let i=0;i<nodes.length;i++){
+        const nd=nodes[i]; const hot=(i===hover);
+        if(!hot && nd.d < 0.66) continue;           // chỉ hiện lớp trước để đỡ rối
+        ctx.font = hot ? '600 13px "Segoe UI",system-ui,sans-serif' : '11px "Segoe UI",system-ui,sans-serif';
+        ctx.shadowColor='rgba(0,0,0,.85)'; ctx.shadowBlur=4;
+        ctx.fillStyle = hot ? 'rgba(255,255,255,1)' : rgba(COLORS[nd.ci], 0.35+0.55*nd.d);
+        ctx.fillText(nd.name, nd.sx+9, nd.sy);
+        ctx.shadowBlur=0;
+      }
+      ctx.globalCompositeOperation='lighter';
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // ================= Điều khiển UI =================
+  const skN=document.getElementById('skN'), vecN=document.getElementById('vecN'), skVal=document.getElementById('skVal');
+  let showLabels=true;
+  document.getElementById('skill').addEventListener('input', e=> rebuild(+e.target.value));
+  document.getElementById('lbl').addEventListener('change', e=> showLabels=e.target.checked);
+  document.getElementById('spin').addEventListener('change', e=> autoSpin=e.target.checked);
+
+  rebuild(24);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
