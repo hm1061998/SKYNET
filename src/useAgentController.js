@@ -48,7 +48,6 @@ export function useAgentController() {
   const approvePlan = useCallback(async (plan) => {
     setBusy(true); setStatus('working'); visual({ type: 'task', task: plan.task, status: 'running' });
     const executionTracker = createExecutionTracker(plan.task);
-    visual({ type: 'thought', task: plan.task, label: 'Phân tích kế hoạch và chọn kỹ năng…' });
     setMessages((current) => current.map((item) => item.id === plan.id ? { ...item, status: 'running' } : item));
     try {
       const start = await api('/api/approve', { task: plan.task, steps: plan.steps });
@@ -69,7 +68,7 @@ export function useAgentController() {
 
   const rejectPlan = useCallback(async (plan) => {
     await api('/api/reject', { task: plan.task }).catch(() => {});
-    visual({ type: 'task', task: plan.task, status: 'error' });
+    visual({ type: 'plan-ready' });
     setMessages((current) => current.map((item) => item.id === plan.id ? { ...item, status: 'rejected' } : item));
     setBusy(false); setStatus('idle');
   }, [setStatus]);
@@ -84,7 +83,7 @@ export function useAgentController() {
       const data = await api('/api/message', { text });
       if (data.mode === 'plan') {
         const plan = { id: crypto.randomUUID(), type: 'plan', task: data.task, steps: data.steps || [], planUrl: data.plan_url, status: 'pending', logs: [] };
-        setMessages((current) => [...current, plan]); visual({ type: 'task', task: data.task, status: 'pending' }); setBusy(false); setStatus('idle');
+        setMessages((current) => [...current, plan]); visual({ type: 'plan-ready' }); setBusy(false); setStatus('idle');
       } else {
         const reply = data.reply || '…';
         visual({ type: 'result', task: text, label: reply, status: 'done', kind: 'chat' });
