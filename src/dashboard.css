@@ -82,6 +82,12 @@ body {
   color: #ff9aaa;
   border-color: rgba(255, 91, 110, 0.55);
 }
+.graph-label.skill.active { color:#fff3bd; border-color:rgba(255,207,107,.72); background:rgba(40,24,5,.88); box-shadow:0 0 18px rgba(255,150,80,.28); font-weight:700; }
+.graph-label.skill.active[data-phase="complete"] { color:#8fffd9; border-color:rgba(80,246,200,.62); background:rgba(4,35,28,.88); }
+.graph-label.skill.active[data-phase="error"] { color:#ff9aaa; border-color:rgba(255,91,110,.65); background:rgba(40,5,12,.88); }
+.graph-label.thought { max-width:210px; overflow:hidden; color:#efc7ff; border-color:rgba(232,92,255,.36); background:rgba(25,7,38,.78); text-overflow:ellipsis; font-size:9px; }
+.graph-label.result { max-width:260px; overflow:hidden; color:#a6ffe1; border-color:rgba(80,246,200,.62); background:rgba(4,35,28,.9); box-shadow:0 0 22px rgba(80,246,200,.24); text-overflow:ellipsis; font-size:10px; font-weight:700; }
+.graph-label.result[data-status="error"] { color:#ffafbb; border-color:rgba(255,91,110,.65); background:rgba(40,5,12,.9); box-shadow:0 0 22px rgba(255,91,110,.2); }
 
 .brand {
   position: absolute;
@@ -202,6 +208,8 @@ body {
 }
 .row {
   display: flex;
+  width: 100%;
+  min-width: 0;
 }
 .row.me {
   justify-content: flex-end;
@@ -231,6 +239,10 @@ body {
 }
 
 .card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   background: rgba(12, 20, 38, 0.66);
   border: 1px solid rgba(90, 180, 220, 0.18);
   border-radius: 14px;
@@ -247,6 +259,7 @@ body {
   margin: 5px 0 10px;
   font-size: 14.5px;
   color: #eaf6ff;
+  overflow-wrap: anywhere;
 }
 .steps {
   list-style: none;
@@ -257,6 +270,7 @@ body {
   display: flex;
   gap: 9px;
   padding: 5px 0;
+  min-width: 0;
 }
 .steps .n {
   flex: none;
@@ -273,6 +287,8 @@ body {
 .steps .t {
   font-size: 13px;
   padding-top: 1px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .acts {
   display: flex;
@@ -309,6 +325,10 @@ body {
   margin-left: auto;
 }
 pre.logs {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   background: #03040c;
   border: 1px solid rgba(90, 180, 220, 0.16);
   border-radius: 10px;
@@ -317,9 +337,12 @@ pre.logs {
   font-family: Consolas, monospace;
   font-size: 11.5px;
   line-height: 1.5;
-  overflow-x: auto;
+  overflow-x: hidden;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
+pre.logs span { white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; }
 .lg-ok {
   color: #5cf0b0;
 }

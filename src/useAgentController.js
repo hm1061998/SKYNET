@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createVoiceEngine } from './voiceEngine.js';
 import { AGENT_VISUAL_EVENT } from './agentConfig.js';
+import { createExecutionTracker, publishExecutionLogs } from './executionProgress.js';
 
 const visual = (detail) => window.dispatchEvent(new CustomEvent(AGENT_VISUAL_EVENT, { detail }));
 const api = async (path, body) => {
@@ -39,23 +40,26 @@ export function useAgentController() {
     visual({ type: 'flash', color: good ? [80, 246, 150] : [255, 90, 90] });
     visual({ type: 'task', task, status: good ? 'done' : 'error' });
     const summary = good ? `✅ ${result.skill}${result.generated ? ' (mới sinh)' : ''}: ${brief(result.result)}` : `❌ Thất bại: ${brief(result?.error)}`;
+    visual({ type: 'result', task, label: summary, status: good ? 'done' : 'error', skill: result?.skill });
     addText(summary); speak(good ? `Xong. ${brief(result.result)}` : 'Tác vụ thất bại.');
     setMessages((current) => current.map((item) => item.id === planId ? { ...item, status: good ? 'done' : 'error' } : item));
   }, [addText, speak]);
 
   const approvePlan = useCallback(async (plan) => {
     setBusy(true); setStatus('working'); visual({ type: 'task', task: plan.task, status: 'running' });
+    const executionTracker = createExecutionTracker(plan.task);
+    visual({ type: 'thought', task: plan.task, label: 'Phân tích kế hoạch và chọn kỹ năng…' });
     setMessages((current) => current.map((item) => item.id === plan.id ? { ...item, status: 'running' } : item));
     try {
       const start = await api('/api/approve', { task: plan.task, steps: plan.steps });
-      if (!start.job) { setMessages((current) => current.map((item) => item.id === plan.id ? { ...item, logs: start.logs || [] } : item)); finishTask(start, plan.id, plan.task); return; }
+      if (!start.job) { publishExecutionLogs(start.logs, executionTracker); setMessages((current) => current.map((item) => item.id === plan.id ? { ...item, logs: start.logs || [] } : item)); finishTask(start, plan.id, plan.task); return; }
       let from = 0, misses = 0;
       while (true) {
         try {
           const response = await fetch(`/api/job?id=${encodeURIComponent(start.job)}&from=${from}`);
           const job = await response.json();
           misses = 0;
-          if (job.logs?.length) { from = job.total; setMessages((current) => current.map((item) => item.id === plan.id ? { ...item, logs: [...(item.logs || []), ...job.logs] } : item)); }
+          if (job.logs?.length) { from = job.total; publishExecutionLogs(job.logs, executionTracker); setMessages((current) => current.map((item) => item.id === plan.id ? { ...item, logs: [...(item.logs || []), ...job.logs] } : item)); }
           if (job.status === 'done') { finishTask(job.result, plan.id, plan.task); break; }
         } catch (_) { if (++misses > 30) throw new Error('Mất kết nối tới job'); }
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -73,6 +77,8 @@ export function useAgentController() {
   const send = useCallback(async (raw) => {
     const text = raw.trim();
     if (!text || busy) return;
+    visual({ type: 'flow-start', task: text });
+    visual({ type: 'thought', task: text, label: 'Phân tích yêu cầu và tìm hướng trả lời…' });
     addText(text, 'me'); setBusy(true); setStatus('thinking');
     try {
       const data = await api('/api/message', { text });
@@ -80,9 +86,11 @@ export function useAgentController() {
         const plan = { id: crypto.randomUUID(), type: 'plan', task: data.task, steps: data.steps || [], planUrl: data.plan_url, status: 'pending', logs: [] };
         setMessages((current) => [...current, plan]); visual({ type: 'task', task: data.task, status: 'pending' }); setBusy(false); setStatus('idle');
       } else {
-        const reply = data.reply || '…'; addText(reply); speak(reply);
+        const reply = data.reply || '…';
+        visual({ type: 'result', task: text, label: reply, status: 'done', kind: 'chat' });
+        addText(reply); speak(reply);
       }
-    } catch (error) { addText(`Lỗi kết nối: ${error.message}`); setBusy(false); setStatus('idle'); }
+    } catch (error) { visual({ type: 'result', task: text, label: error.message, status: 'error' }); addText(`Lỗi kết nối: ${error.message}`); setBusy(false); setStatus('idle'); }
   }, [addText, busy, setStatus, speak]);
   sendRef.current = send;
 
