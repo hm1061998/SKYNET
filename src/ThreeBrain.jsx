@@ -74,6 +74,22 @@ function moveThoughtOnOrbit(thought, time) {
   thought.mesh.position.copy(thought.position);
 }
 
+function createLocalOrbitLine(orbit, color, opacity = .1) {
+  const points = Array.from({ length: 64 }, (_, index) => {
+    const angle = index / 64 * Math.PI * 2;
+    return orbit.anchor.clone().addScaledVector(orbit.tangent, Math.cos(angle) * orbit.amplitude).addScaledVector(orbit.bitangent, Math.sin(angle) * orbit.amplitude);
+  });
+  return new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+}
+
+function createPlanarOrbitLine(orbit, color, opacity = .16) {
+  const points = Array.from({ length: 96 }, (_, index) => {
+    const angle = index / 96 * Math.PI * 2;
+    return new THREE.Vector3(Math.cos(angle) * orbit.radius, orbit.height, Math.sin(angle) * orbit.radius * .58);
+  });
+  return new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+}
+
 function makeLabel(stage, text, kind = 'skill') {
   const el = document.createElement('div');
   el.className = `graph-label ${kind}`;
@@ -227,7 +243,7 @@ export default function ThreeBrain() {
     let targetCameraZ = camera.position.z;
 
     const clearSkills = () => {
-      skillObjects.forEach(({ mesh, label }) => { graph.remove(mesh); label.remove(); disposeObject(mesh); });
+      skillObjects.forEach(({ mesh, orbitLine, label }) => { graph.remove(mesh, orbitLine); label.remove(); disposeObject(mesh); disposeObject(orbitLine); });
       skillObjects = [];
       if (activityLinks) { graph.remove(activityLinks); activityLinks.geometry.dispose(); activityLinks.material.dispose(); activityLinks = null; }
     };
@@ -240,9 +256,11 @@ export default function ThreeBrain() {
         const color = index % 3 === 0 ? 0x50f6c8 : index % 3 === 1 ? 0x4fe3ff : 0x8a6cff;
         const mesh = createSatelliteNode(color, index);
         mesh.position.copy(position);
-        graph.add(mesh);
+        const orbit = makeOrbit(position, index, .09 + (index % 5) * .012);
+        const orbitLine = createLocalOrbitLine(orbit, color);
+        graph.add(mesh, orbitLine);
         const label = makeLabel(host, name);
-        skillObjects.push({ name, mesh, label, position, orbit: makeOrbit(position, index, .09 + (index % 5) * .012), phase: Math.random() * Math.PI * 2, activity: 0, activityState: 'idle' });
+        skillObjects.push({ name, mesh, orbitLine, label, position, orbit, phase: Math.random() * Math.PI * 2, activity: 0, activityState: 'idle' });
       });
       const badge = document.getElementById('badge');
       if (badge) badge.textContent = `${list.length} kỹ năng • neural graph`;
@@ -326,29 +344,32 @@ export default function ThreeBrain() {
       mesh.position.copy(position);
       const glow = new THREE.Mesh(new THREE.SphereGeometry(.135, 18, 12), new THREE.MeshBasicMaterial({ color: 0xe85cff, transparent: true, opacity: .12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
       mesh.add(glow);
+      const orbitLine = createPlanarOrbitLine(orbit, 0xe85cff, .2);
       const label = makeLabel(host, labelText.length > 52 ? `${labelText.slice(0, 52)}…` : labelText, 'thought');
-      graph.add(mesh);
-      thoughtObjects.push({ mesh, glow, label, position, orbit, born: performance.now(), phase: Math.random() * 6 });
+      graph.add(mesh, orbitLine);
+      thoughtObjects.push({ mesh, glow, orbitLine, label, position, orbit, born: performance.now(), phase: Math.random() * 6 });
       while (thoughtObjects.length > 5) {
-        const old = thoughtObjects.shift(); graph.remove(old.mesh); old.label.remove(); disposeObject(old.mesh);
+        const old = thoughtObjects.shift(); graph.remove(old.mesh, old.orbitLine); old.label.remove(); disposeObject(old.mesh); disposeObject(old.orbitLine);
       }
       rebuildTaskLinks(detail.task);
     };
 
     const removeResult = (result) => {
-      graph.remove(result.mesh, result.ring, result.link);
+      graph.remove(result.mesh, result.ring, result.orbitLine, result.link);
       result.label.remove();
       result.mesh.geometry.dispose(); result.mesh.material.dispose();
       result.ring.geometry.dispose(); result.ring.material.dispose();
+      result.orbitLine.geometry.dispose(); result.orbitLine.material.dispose();
       result.link.geometry.dispose(); result.link.material.dispose();
       resultObjects = resultObjects.filter((item) => item !== result);
     };
 
     const clearThoughts = () => {
       thoughtObjects.forEach((item) => {
-        graph.remove(item.mesh);
+        graph.remove(item.mesh, item.orbitLine);
         item.label.remove();
         disposeObject(item.mesh);
+        disposeObject(item.orbitLine);
       });
       thoughtObjects = [];
     };
@@ -368,11 +389,13 @@ export default function ThreeBrain() {
       const linkGeometry = new THREE.BufferGeometry();
       linkGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, position.x, position.y, position.z], 3));
       const link = new THREE.LineSegments(linkGeometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: .72, blending: THREE.AdditiveBlending }));
+      const orbit = makeOrbit(position, index + 47, .17);
+      const orbitLine = createLocalOrbitLine(orbit, color, .2);
       const text = String(detail.label || 'Đã có kết quả').replace(/\s+/g, ' ').trim();
       const label = makeLabel(host, `${error ? '×' : '✓'} Kết quả: ${text.length > 62 ? `${text.slice(0, 62)}…` : text}`, 'result');
       label.dataset.status = detail.status;
-      graph.add(mesh, ring, link);
-      resultObjects.push({ mesh, ring, link, label, position, orbit: makeOrbit(position, index + 47, .17), phase: Math.random() * 6 });
+      graph.add(mesh, ring, orbitLine, link);
+      resultObjects.push({ mesh, ring, orbitLine, link, label, position, orbit, phase: Math.random() * 6 });
       while (resultObjects.length > 3) removeResult(resultObjects[0]);
     };
 
@@ -387,10 +410,11 @@ export default function ThreeBrain() {
 
     const removeTask = (task) => {
       if (!taskObjects.includes(task)) return;
-      graph.remove(task.mesh, task.ring, task.links);
+      graph.remove(task.mesh, task.ring, task.orbitLine, task.links);
       task.label.remove();
       task.mesh.geometry.dispose(); task.mesh.material.dispose();
       task.ring.geometry.dispose(); task.ring.material.dispose();
+      task.orbitLine.geometry.dispose(); task.orbitLine.material.dispose();
       task.links.geometry.dispose(); task.links.material.dispose();
       taskObjects = taskObjects.filter((item) => item !== task);
     };
@@ -405,13 +429,14 @@ export default function ThreeBrain() {
         mesh.position.copy(position);
         const ring = new THREE.Mesh(new THREE.SphereGeometry(.19, 20, 14), new THREE.MeshBasicMaterial({ color: 0xff9650, transparent: true, opacity: .13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
         ring.position.copy(position);
+        const orbitLine = createPlanarOrbitLine(orbit, 0xff9650, .2);
         const vertices = [position.x, position.y, position.z, 0, 0, 0];
         const linksGeo = new THREE.BufferGeometry();
         linksGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
         const links = new THREE.LineSegments(linksGeo, new THREE.LineBasicMaterial({ color: 0xff9650, transparent: true, opacity: 0.42 }));
         const label = makeLabel(host, detail.task || 'Task', 'task');
-        graph.add(mesh, ring, links);
-        task = { name: detail.task, mesh, ring, links, label, position, orbit, status: detail.status };
+        graph.add(mesh, ring, orbitLine, links);
+        task = { name: detail.task, mesh, ring, orbitLine, links, label, position, orbit, status: detail.status };
         taskObjects.push(task);
       }
       task.status = detail.status;
@@ -419,6 +444,7 @@ export default function ThreeBrain() {
       task.mesh.material.color.setHex(colors[0]);
       task.mesh.material.emissive.setHex(colors[1]);
       task.ring.material.color.setHex(colors[0]);
+      task.orbitLine.material.color.setHex(colors[0]);
       task.label.dataset.status = detail.status;
       task.label.textContent = `${detail.status === 'running' ? '● ' : detail.status === 'done' ? '✓ ' : detail.status === 'error' ? '× ' : '○ '}${detail.task}`;
       if (detail.status === 'done' || detail.status === 'error') window.setTimeout(() => removeTask(task), 5000);
@@ -524,12 +550,13 @@ export default function ThreeBrain() {
         if (satellite) {
           satellite.edgeMaterial.opacity = isCurrent ? .9 : .3 + item.activity * .3;
         }
+        item.orbitLine.material.opacity = isCurrent ? .48 : .06 + item.activity * .14;
         if (!isCurrent) item.activity *= .992;
       });
-      thoughtObjects.forEach((thought, index) => { moveThoughtOnOrbit(thought, time); const pulse = .5 + Math.max(0, Math.sin(time * 4.2 + thought.phase)) * .5; thought.mesh.scale.setScalar(1 + pulse * .16); thought.glow.scale.setScalar(1 + pulse * .28); thought.glow.material.opacity = .07 + pulse * .11; });
+      thoughtObjects.forEach((thought, index) => { moveThoughtOnOrbit(thought, time); const pulse = .5 + Math.max(0, Math.sin(time * 4.2 + thought.phase)) * .5; thought.mesh.scale.setScalar(1 + pulse * .16); thought.glow.scale.setScalar(1 + pulse * .28); thought.glow.material.opacity = .07 + pulse * .11; thought.orbitLine.material.opacity = .12 + pulse * .13; });
       resultObjects.forEach((result, index) => { moveOnOrbit(result, time, .25); result.ring.position.copy(result.position); result.mesh.rotation.x += .018; result.mesh.rotation.y += .026; result.ring.rotation.z = time * (1.1 + index * .12); result.ring.scale.setScalar(1 + Math.sin(time * 3.2 + result.phase) * .1); const positions = result.link.geometry.attributes.position; positions.setXYZ(1, result.position.x, result.position.y, result.position.z); positions.needsUpdate = true; });
       if (activityLinks) activityLinks.material.opacity = .55 + Math.max(0, Math.sin(time * 5)) * .4;
-      taskObjects.forEach((task, index) => { moveTaskOnOrbit(task, time); task.ring.position.copy(task.position); const pulse = .5 + Math.max(0, Math.sin(time * 3.4 + index)) * .5; task.mesh.scale.setScalar(1 + pulse * .16); task.ring.scale.setScalar(1 + pulse * .24); task.ring.material.opacity = .075 + pulse * .11; });
+      taskObjects.forEach((task, index) => { moveTaskOnOrbit(task, time); task.ring.position.copy(task.position); const pulse = .5 + Math.max(0, Math.sin(time * 3.4 + index)) * .5; task.mesh.scale.setScalar(1 + pulse * .16); task.ring.scale.setScalar(1 + pulse * .24); task.ring.material.opacity = .075 + pulse * .11; task.orbitLine.material.opacity = .14 + pulse * .14; });
       updateActivityLinkPositions();
       taskObjects.forEach((task) => rebuildTaskLinks(task.name));
 
