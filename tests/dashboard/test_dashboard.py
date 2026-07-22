@@ -104,7 +104,7 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("No active Work Order", organization)
         self.assertIn("Could not load organization state", organization)
         self.assertIn("LiveOrganizationGraph", organization)
-        self.assertIn("Living AI Organization", organization)
+        self.assertIn("Living AI organization graph", organization)
         self.assertIn("Pause Work Order", organization)
         self.assertIn("Retry task", organization)
         self.assertIn("Focus graph", organization)

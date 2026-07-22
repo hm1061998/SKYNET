@@ -8,6 +8,8 @@ The follow-up polish compresses the product header into a single 52px control ba
 
 The organization graph now occupies the entire viewport in organization mode, with navigation, filters, status and conversation rendered as overlays. Chat composition and controller lifecycle states drive the existing Three.js runtime through a mutable activity reference: composing, thinking, working and speaking alter neural pulse, signal speed, orbit energy and color without reconstructing the scene or resetting the camera.
 
+The redundant visible graph title was removed, the filter toolbar moved into its space, and organization-mode composer positioning now explicitly resets Chat mode's centered transform so all four controls remain inside the chat panel.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.
