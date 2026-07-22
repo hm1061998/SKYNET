@@ -58,6 +58,15 @@ class Config:
     def __init__(self, data: dict | None = None):
         self.data = data or {}
 
+    @property
+    def execution_mode(self) -> str:
+        """Safe execution mode; legacy host mutation must be explicitly selected."""
+        mode = (os.environ.get("JAVIS_EXECUTION_MODE") or
+                self.data.get("execution_mode") or "dry_run").strip().lower()
+        if mode not in {"mock", "dry_run", "sandbox", "legacy_unsafe"}:
+            raise ValueError(f"unknown execution mode: {mode}")
+        return mode
+
     # ---- nạp ----
     @classmethod
     def load(cls, path=CONFIG_PATH) -> "Config":
@@ -104,4 +113,5 @@ class Config:
         def one(r: RoleConfig):
             k = "mock" if r.is_mock else ("local" if r.is_local else ("có key" if r.api_key else "THIẾU key"))
             return f"{r.role}={r.provider}:{r.model} ({k})"
-        return f"{one(chat)} | {one(work)}"
+        warning = " | WARNING: LEGACY UNSAFE HOST MUTATION ENABLED" if self.execution_mode == "legacy_unsafe" else ""
+        return f"{one(chat)} | {one(work)} | execution={self.execution_mode}{warning}"

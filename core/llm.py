@@ -8,9 +8,9 @@ from __future__ import annotations
 import importlib
 import json
 import re
-import subprocess
 import sys
 
+from . import autoinstall
 from .config import Config, RoleConfig
 from .identity import AGENT_NAME
 
@@ -20,14 +20,13 @@ class LLMError(RuntimeError):
 
 
 def _import(module: str, pip_name: str | None = None):
-    """Import module, tự cài bằng pip nếu thiếu."""
+    """Import a provider SDK; host installation requires legacy unsafe mode."""
     try:
         return importlib.import_module(module)
     except ImportError:
         pkg = pip_name or module
-        print(f"[llm] Đang cài SDK: {pkg} ...", file=sys.stderr)
-        subprocess.run([sys.executable, "-m", "pip", "install", pkg,
-                        "--break-system-packages", "--quiet"], check=False)
+        if not autoinstall.pip_install(pkg, log=lambda message: print(message, file=sys.stderr)):
+            raise LLMError(f"provider SDK '{pkg}' is unavailable; host install is blocked")
         return importlib.import_module(module)
 
 

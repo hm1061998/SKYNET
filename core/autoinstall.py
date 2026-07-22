@@ -1,7 +1,8 @@
-"""Tự động cài package Python khi thiếu.
+"""Compatibility-only package recovery when a dependency is missing.
 
 Dùng chung cho registry (lỗi import lúc nạp skill) và orchestrator (lỗi lúc chạy skill).
-Tắt bằng biến môi trường AGENT_NO_AUTO_INSTALL=1.
+Host installation is disabled by default. It is available only through the
+explicit ``JAVIS_EXECUTION_MODE=legacy_unsafe`` compatibility mode.
 """
 from __future__ import annotations
 import importlib
@@ -49,7 +50,9 @@ _VALID_PKG = re.compile(r"^[A-Za-z0-9_.\-\[\]=<>,!~ ]+$")
 
 
 def enabled() -> bool:
-    return os.environ.get("AGENT_NO_AUTO_INSTALL", "").strip() not in ("1", "true", "yes")
+    mode = os.environ.get("JAVIS_EXECUTION_MODE", "dry_run").strip().lower()
+    disabled = os.environ.get("AGENT_NO_AUTO_INSTALL", "").strip().lower() in ("1", "true", "yes")
+    return mode == "legacy_unsafe" and not disabled
 
 
 def pip_name(module: str) -> str:
@@ -82,7 +85,8 @@ def pip_install(pkg: str, log=None, timeout: int = 300) -> bool:
         _log(f"[!] Tên gói không hợp lệ, bỏ qua: {pkg}")
         return False
     if not enabled():
-        _log("[!] Auto-install đang tắt (AGENT_NO_AUTO_INSTALL=1).")
+        _log("[SECURITY] Host auto-install blocked. Set JAVIS_EXECUTION_MODE=legacy_unsafe "
+             "only for explicit compatibility use; this mode is unsafe.")
         return False
     _log(f"[>] pip install {pkg} ...")
     try:

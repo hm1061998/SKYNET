@@ -153,8 +153,9 @@ class _CtxLLM:
         blk = self._get()
         if not blk:
             return messages
-        return ([{"role": "system",
-                  "content": "=== BỐI CẢNH TOÀN CỤC (tự động đính kèm) ===\n" + blk}]
+        return ([{"role": "user",
+                  "content": "<UNTRUSTED_MEMORY_CONTEXT>\n" + blk +
+                             "\n</UNTRUSTED_MEMORY_CONTEXT>"}]
                 + list(messages))
 
     def complete(self, messages, **kw):
@@ -173,6 +174,9 @@ class SkillAgent:
     def __init__(self, config: Config | None = None, memory: Memory | None = None,
                  session: str = "default"):
         self.config = config or Config.load()
+        if self.config.execution_mode == "legacy_unsafe":
+            print("[SECURITY WARNING] legacy_unsafe mode can modify the host and is not sandboxed.")
+            os.environ.setdefault("JAVIS_EXECUTION_MODE", "legacy_unsafe")
         self.llm = LLM(self.config)
         self.registry = Registry().load()
         self.memory = (memory or Memory(session=session)).load()
@@ -811,6 +815,10 @@ class SkillAgent:
             _log(f"[✓] Tìm thấy '{tool}' tại: {exe} → đã thêm vào PATH.")
             self.memory.remember(f"Công cụ {tool} nằm tại {exe}.", kind="note", tags=[tool])
             return True
+        if not autoinstall.enabled():
+            _log("[SECURITY] Host system-tool installation blocked. Explicit "
+                 "JAVIS_EXECUTION_MODE=legacy_unsafe is required and unsafe.")
+            return False
         sysname = platform.system().lower()
         if "windows" in sysname:
             cmds = [["winget", "install", "-e", "--id", _WINGET_ID.get(tool, tool),
