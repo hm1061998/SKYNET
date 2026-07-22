@@ -34,11 +34,13 @@ from core import tools as tools_mod            # noqa: E402
 from core import orchestrator as orch_mod      # noqa: E402
 from core.config import Config                 # noqa: E402
 from core.orchestrator import SkillAgent       # noqa: E402
+from core.dashboard import DashboardState, DashboardStateError  # noqa: E402
 
 DASHBOARD_DIR = PROJECT_ROOT / "dashboard" / "dist"
 DASHBOARD = DASHBOARD_DIR / "index.html"
 AGENT_IDENTITY_PATH = PROJECT_ROOT / "agent.config.json"
 AGENT: SkillAgent | None = None
+DASHBOARD_STATE = DashboardState(PROJECT_ROOT)
 
 
 def agent_name() -> str:
@@ -216,6 +218,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -241,6 +245,30 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     def do_GET(self):
+        request_path = urlparse(self.path).path
+        if request_path.startswith("/api/v1/"):
+            routes = {
+                "/api/v1/organizations": DASHBOARD_STATE.organizations,
+                "/api/v1/work-orders": DASHBOARD_STATE.work_orders,
+                "/api/v1/agents": DASHBOARD_STATE.agents,
+                "/api/v1/artifacts": DASHBOARD_STATE.artifacts,
+                "/api/v1/approvals": DASHBOARD_STATE.approvals,
+                "/api/v1/events": DASHBOARD_STATE.events,
+                "/api/v1/metrics": DASHBOARD_STATE.metrics,
+                "/api/v1/configuration": DASHBOARD_STATE.configuration,
+                "/api/v1/session": lambda: {"csrf_token": DASHBOARD_STATE.csrf_token},
+            }
+            if request_path in routes:
+                return self._json({"data": routes[request_path]()})
+            parts = request_path.strip("/").split("/")
+            if len(parts) == 4 and parts[:3] == ["api", "v1", "work-orders"]:
+                item = DASHBOARD_STATE.work_order(parts[3])
+                return self._json({"data": item}, 200 if item else 404)
+            if len(parts) == 5 and parts[:3] == ["api", "v1", "work-orders"] and parts[4] == "tasks":
+                return self._json({"data": DASHBOARD_STATE.tasks(parts[3])})
+            if len(parts) == 4 and parts[:3] == ["api", "v1", "tasks"]:
+                item = DASHBOARD_STATE.task(parts[3])
+                return self._json({"data": item}, 200 if item else 404)
         if self.path in ("/", "/index.html"):
             return self._file(DASHBOARD)
         if self.path == "/api/health":
@@ -296,6 +324,14 @@ class Handler(BaseHTTPRequestHandler):
         maybe_reload_code()                  # nạp lại code nếu core/ đổi
         refresh_config()                     # luôn dùng config mới nhất
         body = self._body()
+        if self.path == "/api/v1/approvals/decision":
+            try:
+                result = DASHBOARD_STATE.decide_approval(
+                    str(body.get("approval_id", "")), str(body.get("action_hash", "")),
+                    str(body.get("decision", "")), self.headers.get("X-CSRF-Token", ""))
+                return self._json({"data": result})
+            except DashboardStateError as e:
+                return self._json({"error": str(e)}, 403)
         if self.path == "/api/message":
             text = (body.get("text") or "").strip()
             if not text:

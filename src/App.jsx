@@ -4,6 +4,8 @@ import ModelSettings from './ModelSettings.jsx';
 import ConversationPanel from './ConversationPanel.jsx';
 import { useAgentController } from './useAgentController.js';
 import { AGENT_NAME } from './agentConfig.js';
+import OrganizationDashboard from './OrganizationDashboard.jsx';
+import { useEffect, useState } from 'react';
 
 const STATUS = {
   idle: { label: 'Đang chờ', color: [80, 246, 200] },
@@ -22,9 +24,17 @@ const formatElapsed = (milliseconds) => {
 
 export default function App() {
   const controller = useAgentController();
+  const [organizationMode, setOrganizationMode] = useState(null);
+  useEffect(() => {
+    fetch('/api/v1/configuration').then((response) => response.json())
+      .then((payload) => setOrganizationMode(payload?.data?.feature_flags?.ui_mode === 'organization'))
+      .catch(() => setOrganizationMode(false));
+  }, []);
   const current = STATUS[controller.status] || STATUS.idle;
   const dotColor = `rgb(${current.color.join(',')})`;
 
+  if (organizationMode === null) return <main className="ops-shell ops-loading" aria-busy="true">Loading dashboard…</main>;
+  if (organizationMode) return <OrganizationDashboard controller={controller} onLegacy={() => setOrganizationMode(false)} />;
   return (
     <div id="app">
       <ThreeBrain />
@@ -43,6 +53,7 @@ export default function App() {
       <div className="badge" id="badge">…</div>
       <ModelSettings />
       <ConversationPanel controller={controller} />
+      <button className="organization-mode-trigger" onClick={() => setOrganizationMode(true)}>Organization console</button>
     </div>
   );
 }

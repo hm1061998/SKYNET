@@ -1,5 +1,6 @@
 {
   "name": "SKYNET",
   "speechName": "X-kai-nét",
-  "wakeAliases": ["skynet", "skynet"]
+  "wakeAliases": ["skynet", "skynet"],
+  "ui": {"mode": "organization", "enable_3d_graph": false}
 }
