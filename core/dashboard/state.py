@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core.company import CORE_ROLE_IDS, OrganizationTemplateLoader, STAGES
+from core.company import OrganizationTemplateLoader, STAGES
 from core.governance import action_hash
+from core.observability import MetricsCalculator
 
 
 class DashboardStateError(ValueError):
@@ -112,11 +113,35 @@ class DashboardState:
                 for index, name in enumerate(names)]
 
     def metrics(self) -> dict[str, Any]:
-        return {"work_orders": {"wo-health-check": {"tokens": 1840, "tool_calls": 11,
-                 "duration_ms": 4480, "retry_count": 1}},
-                "agents": {role: {"tokens": 200 + index * 20} for index, role in enumerate(CORE_ROLE_IDS)},
+        calculator = MetricsCalculator()
+        tasks = self.tasks("wo-health-check")
+        work_order_records = [{"status": "completed" if item["status"] == "completed" else "blocked",
+            "duration_ms": item["cost"]["duration_ms"], "blocked_ms": 90 if item["blocked_reason"] else 0,
+            "approval_wait_ms": 90 if item["approval_gate"] else 0, "cost": 0.0,
+            "revisions": item["retry_count"], "escalations": int(bool(item["blocked_reason"]))}
+            for item in tasks]
+        agent_records = [{"agent_id": item["owner"], "success": item["status"] == "completed",
+            "first_pass": item["retry_count"] == 0, "defects": item["retry_count"],
+            "artifact_units": max(1, len(item["artifact_outputs"])), "cost": 0.0,
+            "duration_ms": item["cost"]["duration_ms"], "retries": item["retry_count"],
+            "policy_violations": 0, "delegation_accepted": True} for item in tasks]
+        skill_records = [{"skill_id": "run_tests", "success": True, "duration_ms": 710,
+                          "permissions": ["process:test"], "generated": False}]
+        return {"work_orders": {"wo-health-check": calculator.work_order(work_order_records)},
+                "agents": calculator.agents(agent_records), "skills": calculator.skills(skill_records),
                 "model_profiles": {"balanced_reasoning": {"tokens": 820},
                                    "deep_reasoning": {"tokens": 600}, "code_reasoning": {"tokens": 420}}}
+
+    def trace_summaries(self) -> list[dict[str, Any]]:
+        """Return sanitized operational spans; private reasoning and raw prompts are excluded."""
+        return [{"trace_id": "trace-health-check", "work_order_id": "wo-health-check",
+                 "status": "waiting_approval", "started_at": "2026-07-22T12:00:00+00:00",
+                 "duration_ms": 4480, "span_count": 8,
+                 "spans": [{"span_id": f"span-{index}", "kind": "approval_wait" if stage.id == "final_approval_delivery" else "artifact_write",
+                            "name": stage.id, "parent_span_id": None,
+                            "status": "running" if stage.id == "final_approval_delivery" and self.approval_status == "pending" else "completed",
+                            "duration_ms": 320 + index * 30, "error_category": None}
+                           for index, stage in enumerate(STAGES)]}]
 
     def configuration(self) -> dict[str, Any]:
         return {"read_only": True, "departments": self.template.departments,

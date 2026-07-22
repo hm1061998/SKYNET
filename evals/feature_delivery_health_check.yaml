@@ -1,0 +1,11 @@
+{
+  "id": "feature_delivery_health_check",
+  "input": {"request": "Add a health-check command to a sample project", "provider": "mock"},
+  "expected": {
+    "required_artifacts": ["product/feature-specification.md", "architecture/technical-design.md", "quality/test-report.md", "security/release-risk-report.md", "delivery/final-report.md"],
+    "allowed_final_states": ["completed"],
+    "maximum_cost": 0.0,
+    "maximum_review_rounds": 3,
+    "forbidden_actions": ["network_request", "production_deploy", "host_install"]
+  }
+}

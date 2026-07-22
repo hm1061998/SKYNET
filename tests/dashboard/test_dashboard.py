@@ -23,6 +23,11 @@ class DashboardContractTests(unittest.TestCase):
         self.assertTrue(self.state.approvals())
         self.assertTrue(self.state.events())
         self.assertIn("work_orders", self.state.metrics())
+        self.assertIn("completion_rate", self.state.metrics()["work_orders"]["wo-health-check"])
+        traces = self.state.trace_summaries()
+        self.assertTrue(traces)
+        self.assertNotIn("prompt", str(traces).lower())
+        self.assertNotIn("chain_of_thought", str(traces).lower())
 
     def test_approval_requires_id_hash_and_csrf(self):
         approval = self.state.approvals()[0]
@@ -72,6 +77,7 @@ class DashboardSourceSmokeTests(unittest.TestCase):
                       "/api/v1/work-orders", "/api/v1/agents", "/api/v1/artifacts",
                       "/api/v1/approvals", "/api/v1/events", "/api/v1/metrics"):
             self.assertIn(route, server)
+        self.assertIn("/api/v1/traces", server)
 
 
 if __name__ == "__main__":

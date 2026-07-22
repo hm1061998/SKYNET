@@ -255,6 +255,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/v1/approvals": DASHBOARD_STATE.approvals,
                 "/api/v1/events": DASHBOARD_STATE.events,
                 "/api/v1/metrics": DASHBOARD_STATE.metrics,
+                "/api/v1/traces": DASHBOARD_STATE.trace_summaries,
                 "/api/v1/configuration": DASHBOARD_STATE.configuration,
                 "/api/v1/session": lambda: {"csrf_token": DASHBOARD_STATE.csrf_token},
             }
