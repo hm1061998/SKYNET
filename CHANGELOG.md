@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1 — 2026-07-22
+
+- Completed retrospective architecture checkpoints required by the Codex execution playbook.
+- Security fix: reject model-generated module-level imports, calls, decorators, complex assignments and definition-time calls before the skill file can reach Registry execution.
+- Added adversarial generated-skill tests; full offline suite now contains 132 passing tests plus one environment-dependent Windows symlink skip.
+
 ## 0.12.0 — 2026-07-22
 
 - Integrated legacy Skill Agent and governed AI Software Company MVP.

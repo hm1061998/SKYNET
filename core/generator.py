@@ -1,5 +1,6 @@
 """Tự sinh skill mới bằng LLM khi registry không có skill phù hợp, và auto-fix 1 lần khi lỗi."""
 from __future__ import annotations
+import ast
 import re
 
 from . import SKILLS_DIR
@@ -39,6 +40,50 @@ run(**kwargs) -> dict, lazy import trong run). Trả về DUY NHẤT code đã s
 
 class GeneratorError(RuntimeError):
     pass
+
+
+def validate_generated_source(code: str) -> None:
+    """Reject generated module-level execution before the source reaches Registry.exec."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as exc:
+        raise GeneratorError(f"Generated skill has invalid syntax: {exc}") from exc
+    meta_found = False
+    run_found = False
+    for node in tree.body:
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            continue
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.decorator_list:
+                raise GeneratorError("Generated skill functions may not use decorators")
+            definition_expressions = tuple(node.args.defaults) + tuple(
+                item for item in node.args.kw_defaults if item is not None)
+            definition_expressions += tuple(item for item in (
+                node.returns, *(arg.annotation for arg in node.args.args),
+                *(arg.annotation for arg in node.args.kwonlyargs)) if item is not None)
+            if any(any(isinstance(child, ast.Call) for child in ast.walk(item))
+                   for item in definition_expressions):
+                raise GeneratorError("Generated skill definitions may not execute calls at module load")
+            run_found = run_found or node.name == "run"
+            continue
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+            if not all(isinstance(target, ast.Name) for target in targets):
+                raise GeneratorError("Generated skill module assignments require simple names")
+            value = node.value
+            try:
+                literal = ast.literal_eval(value) if value is not None else None
+            except (ValueError, TypeError) as exc:
+                raise GeneratorError("Generated skill module assignments must be literals") from exc
+            if any(isinstance(target, ast.Name) and target.id == "SKILL_META" for target in targets):
+                if not isinstance(literal, dict):
+                    raise GeneratorError("Generated SKILL_META must be a literal dictionary")
+                meta_found = True
+            continue
+        raise GeneratorError(
+            f"Generated skill contains forbidden module-level statement: {type(node).__name__}")
+    if not meta_found or not run_found:
+        raise GeneratorError("Generated skill requires literal SKILL_META and run function")
 
 
 def _sanitize(name: str) -> str:
@@ -113,6 +158,8 @@ def generate(task: str, llm, taken=None, role: str = "work", attempts: int = 3) 
     code = re.sub(r'(["\']name["\']\s*:\s*["\'])[^"\']+(["\'])',
                   lambda m: m.group(1) + name + m.group(2), code, count=1)
 
+    validate_generated_source(code)
+
     path = SKILLS_DIR / f"{name}.py"
     path.write_text(code + "\n", encoding="utf-8")
 
@@ -130,6 +177,7 @@ def fix(task: str, code: str, error: str, llm, role: str = "work") -> str:
     fixed = _parse_code(raw)
     if "def run" not in fixed:
         raise GeneratorError(f"Bản sửa không hợp lệ. Model trả (đầu): {str(raw)[:200]!r}")
+    validate_generated_source(fixed)
     return fixed
 
 
