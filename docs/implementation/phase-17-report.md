@@ -14,6 +14,8 @@ The graph content no longer creates a low-level stacking context in fullscreen m
 
 Agent nodes now expose workflow participation independently from global graph activity. The current role is inferred from the controller phase and recent bounded execution logs; assigned agents are marked as planned while execution is active, completed agents are visually subdued, and active/planned assignment edges remain visible without enabling debug links. The inspector and graph legend expose the same state textually.
 
+Runtime skills observed in bounded execution logs are projected as pink skill nodes with `uses_skill` edges from the inferred active agent. Task dependency ownership is projected into deduplicated `handoff_to` edges between role agents, making the planned collaboration path visible without reverting to an organization-chart hierarchy.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.

@@ -114,6 +114,8 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("activity={graphTyping", organization)
         self.assertIn("inferActiveAgent", organization)
         self.assertIn("activeAgentId={activeAgentId}", organization)
+        self.assertIn("executionSkills", organization)
+        self.assertIn("runtimeSkills={activeSkills}", organization)
         styles = (ROOT / "src" / "dashboard.css").read_text(encoding="utf-8")
         self.assertIn(".ops-layout.graph-mode .graph-inspector { z-index:12; }", styles)
 
@@ -131,6 +133,9 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Agent workflow states", graph)
         self.assertIn("processState", graph)
         self.assertIn("workflowEdge", graph)
+        self.assertIn("uses_skill", graph)
+        self.assertIn("handoff_to", graph)
+        self.assertIn("Pink: active skill", graph)
         self.assertIn("THREE.WebGLRenderer", graph)
         self.assertIn("THREE.Raycaster", graph)
         self.assertIn("3D rendering is unavailable", graph)

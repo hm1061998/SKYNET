@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 
-const KIND_ORDER = ['work_order', 'agent', 'task', 'artifact', 'approval'];
-const KIND_LABELS = { work_order: 'Work order', agent: 'AI entities', task: 'Tasks', artifact: 'Artifacts', approval: 'Human gates' };
-const COLORS = { work_order: 0x4fe3ff, agent: 0x50f6c8, task: 0x8a70ff, artifact: 0x4fa4d8, approval: 0xffbd59 };
+const KIND_ORDER = ['work_order', 'agent', 'skill', 'task', 'artifact', 'approval'];
+const KIND_LABELS = { work_order: 'Work order', agent: 'AI entities', skill: 'Skills', task: 'Tasks', artifact: 'Artifacts', approval: 'Human gates' };
+const COLORS = { work_order: 0x4fe3ff, agent: 0x50f6c8, skill: 0xff75d8, task: 0x8a70ff, artifact: 0x4fa4d8, approval: 0xffbd59 };
 
 function seededUnit(index) {
   const value = Math.sin(index * 12.9898 + 78.233) * 43758.5453;
@@ -27,6 +27,11 @@ function layout(nodes, edges) {
   tasks.forEach((node, index) => {
     const anchor = positions.get(assignedAgent.get(node.id)) || brainPoint(index, tasks.length).multiplyScalar(.65);
     positions.set(node.id, anchor.clone().multiplyScalar(1.38).add(new THREE.Vector3(0, .12, .18)));
+  });
+  const skillOwner = new Map(edges.filter((edge) => edge.kind === 'uses_skill').map((edge) => [edge.target, edge.source]));
+  nodes.filter((node) => node.kind === 'skill').forEach((node, index) => {
+    const anchor = positions.get(skillOwner.get(node.id)) || new THREE.Vector3(); const angle = index * 1.35 + .4;
+    positions.set(node.id, anchor.clone().add(new THREE.Vector3(Math.cos(angle) * .72, .38 + index % 2 * .22, Math.sin(angle) * .62)));
   });
   const sourceTask = new Map(edges.filter((edge) => edge.kind === 'produces').map((edge) => [edge.target, edge.source]));
   const artifacts = nodes.filter((node) => node.kind === 'artifact');
@@ -151,7 +156,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       core.userData.nodeId = node.id; group.add(core);
       const halo = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.3, 18, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
       halo.userData.nodeId = node.id; group.add(halo);
-      if (node.kind === 'agent' || node.kind === 'approval') group.add(labelSprite(node.label, color));
+      if (node.kind === 'agent' || node.kind === 'approval' || node.kind === 'skill') group.add(labelSprite(node.label, color));
       if (node.kind === 'agent') {
         const ring = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.9, .012, 6, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .55 }));
         ring.rotation.x = Math.PI / 2; group.userData.processRing = ring; group.add(ring);
@@ -176,7 +181,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       const curve = new THREE.QuadraticBezierCurve3(source.position, middle, target.position);
       if (edge.kind !== 'reports_to') signalCurves.push(curve);
       const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(30));
-      const color = edge.kind === 'gated_by' ? 0xffbd59 : edge.kind === 'reports_to' ? 0x876dba : 0x285c72;
+      const color = edge.kind === 'gated_by' ? 0xffbd59 : edge.kind === 'uses_skill' ? 0xff75d8 : edge.kind === 'handoff_to' ? 0x50f6c8 : edge.kind === 'reports_to' ? 0x876dba : 0x285c72;
       const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: debugLinks ? .28 : 0 }));
       line.userData.edge = edge; line.userData.baseColor = color; line.userData.curve = curve;
       edgeLines.push(line); graph.add(line);
@@ -221,7 +226,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       const edge = line.userData.edge;
       const active = edge.source === selectedId || edge.target === selectedId;
       const sourceState = runtime.nodeMeshes.get(edge.source)?.userData.processState;
-      const workflowEdge = edge.kind === 'assigned_to' && ['active', 'planned'].includes(sourceState);
+      const workflowEdge = ['assigned_to', 'handoff_to', 'uses_skill'].includes(edge.kind) && (['active', 'planned'].includes(sourceState) || edge.kind === 'handoff_to');
       line.material.color.setHex(active ? 0xdffcff : line.userData.baseColor);
       line.material.opacity = active ? .92 : workflowEdge ? (sourceState === 'active' ? .82 : .24) : debugLinks ? .28 : 0;
     });
@@ -234,7 +239,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
     runtime.nodeMeshes.forEach((item, id) => {
       const node = latest.get(id);
       if (!node) return;
-      const attention = node.status === 'waiting_approval' || node.status === 'pending' || node.status === 'blocked' || node.status === 'failed';
+      const attention = node.status === 'active' || node.status === 'waiting_approval' || node.status === 'pending' || node.status === 'blocked' || node.status === 'failed';
       const processState = node.processState || 'idle';
       item.userData.processState = processState;
       const active = processState === 'active'; const planned = processState === 'planned'; const completed = processState === 'completed';
@@ -249,14 +254,21 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
   return <div ref={hostRef} className="organization-3d-stage" aria-label="Interactive 3D graph of the live AI organization" />;
 }
 
-export default function LiveOrganizationGraph({ topology, onOpenTask, activity = 'idle', activeAgentId = '', workflowActive = false }) {
+export default function LiveOrganizationGraph({ topology, onOpenTask, activity = 'idle', activeAgentId = '', workflowActive = false, runtimeSkills = [] }) {
   const [selectedId, setSelectedId] = useState('');
   const [visibleKinds, setVisibleKinds] = useState(new Set(KIND_ORDER));
   const [debugLinks, setDebugLinks] = useState(false);
-  const topologySignature = JSON.stringify({ nodes: topology.nodes, edges: topology.edges });
-  const positioned = useMemo(() => layout(topology.nodes.filter((node) => visibleKinds.has(node.kind)), topology.edges), [topologySignature, visibleKinds]);
+  const augmented = useMemo(() => {
+    const taskOwners = new Map(topology.edges.filter((edge) => edge.kind === 'assigned_to').map((edge) => [edge.target, edge.source]));
+    const handoffs = topology.edges.filter((edge) => edge.kind === 'depends_on').map((edge) => ({ source: taskOwners.get(edge.source), target: taskOwners.get(edge.target), kind: 'handoff_to' })).filter((edge) => edge.source && edge.target && edge.source !== edge.target).filter((edge, index, values) => values.findIndex((item) => item.source === edge.source && item.target === edge.target) === index);
+    const skills = runtimeSkills.map((name, index) => ({ id: `runtime-skill-${name}`, kind: 'skill', label: name, status: index === runtimeSkills.length - 1 && workflowActive ? 'active' : 'completed', detail: 'Runtime skill observed in execution logs' }));
+    const skillEdges = skills.map((skill) => ({ source: activeAgentId || 'developer', target: skill.id, kind: 'uses_skill' }));
+    return { nodes: [...topology.nodes, ...skills], edges: [...topology.edges, ...handoffs, ...skillEdges] };
+  }, [topology, runtimeSkills.join('|'), activeAgentId, workflowActive]);
+  const topologySignature = JSON.stringify({ nodes: augmented.nodes, edges: augmented.edges });
+  const positioned = useMemo(() => layout(augmented.nodes.filter((node) => visibleKinds.has(node.kind)), augmented.edges), [topologySignature, visibleKinds]);
   const ids = new Set(positioned.map((node) => node.id));
-  const edges = useMemo(() => topology.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)), [topologySignature, positioned]);
+  const edges = useMemo(() => augmented.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)), [topologySignature, positioned]);
   const sceneNodes = useMemo(() => positioned.filter((node) => node.kind !== 'artifact').map((node) => {
     if (node.kind !== 'agent') return node;
     const processState = node.id === activeAgentId ? 'active' : workflowActive && node.current_task ? 'planned' : node.status === 'completed' ? 'completed' : ['blocked', 'failed'].includes(node.status) ? 'blocked' : node.current_task ? 'planned' : 'idle';
@@ -264,12 +276,12 @@ export default function LiveOrganizationGraph({ topology, onOpenTask, activity =
   }), [positioned, activeAgentId, workflowActive]);
   const sceneIds = new Set(sceneNodes.map((node) => node.id));
   const sceneEdges = useMemo(() => edges.filter((edge) => sceneIds.has(edge.source) && sceneIds.has(edge.target)), [edges, sceneNodes]);
-  const selected = topology.nodes.find((node) => node.id === selectedId);
+  const selected = augmented.nodes.find((node) => node.id === selectedId);
   const toggleKind = (kind) => setVisibleKinds((current) => { const next = new Set(current); if (next.has(kind) && next.size > 1) next.delete(kind); else next.add(kind); return next; });
 
   return <div className="live-graph-shell">
     <div className="graph-toolbar" aria-label="Graph filters">{KIND_ORDER.map((kind) => <button key={kind} className={visibleKinds.has(kind) ? `kind-${kind} active` : ''} aria-pressed={visibleKinds.has(kind)} onClick={() => toggleKind(kind)}>{KIND_LABELS[kind]}</button>)}<button className={debugLinks ? 'active' : ''} aria-pressed={debugLinks} onClick={() => setDebugLinks((value) => !value)}>Debug links</button><span className={`live-indicator activity-${activity}`}><i /> {activity === 'typing' ? 'Listening to your prompt' : activity === 'thinking' ? 'Collective mind thinking' : activity === 'working' ? 'Agents executing' : activity === 'speaking' ? 'Responding' : 'Collective mind online'}</span></div>
     <div className="live-graph-workspace"><ThreeOrganizationGraph nodes={sceneNodes} edges={sceneEdges} selectedId={selectedId} onSelect={setSelectedId} debugLinks={debugLinks} activity={activity}/><div className="agent-process-legend" aria-label="Agent workflow states"><span className="active">Active</span><span className="planned">In workflow</span><span className="completed">Completed</span></div><div className="graph-gesture-hint" aria-hidden="true">Drag to orbit · Scroll to zoom · Select to inspect</div><details className="entity-index"><summary>Entities <span>{positioned.length}</span></summary><div className="accessible-entities"><strong>Keyboard entity list</strong>{positioned.map((node) => <button key={node.id} className={node.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(node.id)}>{node.label}</button>)}</div></details>{selected && <aside className="graph-inspector" aria-live="polite"><button className="graph-inspector-close" onClick={() => setSelectedId('')} aria-label="Close inspector">×</button><span className={`entity-kind kind-${selected.kind}`}>{KIND_LABELS[selected.kind]}</span><h3>{selected.label}</h3><span className={`ops-status status-${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span>{selected.kind === 'agent' && <span className={`agent-process-state state-${sceneNodes.find((node) => node.id === selected.id)?.processState || 'idle'}`}>{sceneNodes.find((node) => node.id === selected.id)?.processState || 'idle'}</span>}<p>{selected.detail || 'No operational detail.'}</p><dl><dt>ID</dt><dd><code>{selected.id}</code></dd>{selected.current_task && <><dt>Current task</dt><dd>{selected.current_task}</dd></>}{selected.risk && <><dt>Risk</dt><dd>{selected.risk}</dd></>}</dl>{selected.kind === 'task' && <button onClick={() => onOpenTask(selected.id)}>Open task details</button>}</aside>}</div>
-    <div className="graph-relationship-legend"><span>Neural core: company mind</span><span>Green: agents</span><span>Orange: temporary workers</span><span>Amber: approval junction</span><time>Snapshot {new Date(topology.generated_at).toLocaleTimeString()}</time></div>
+    <div className="graph-relationship-legend"><span>Neural core: company mind</span><span>Green: agent handoff</span><span>Pink: active skill</span><span>Orange: temporary workers</span><span>Amber: approval junction</span><time>Snapshot {new Date(topology.generated_at).toLocaleTimeString()}</time></div>
   </div>;
 }
