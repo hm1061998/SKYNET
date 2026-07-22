@@ -16,6 +16,8 @@ Agent nodes now expose workflow participation independently from global graph ac
 
 Runtime skills observed in bounded execution logs are projected as pink skill nodes with `uses_skill` edges from the inferred active agent. Task dependency ownership is projected into deduplicated `handoff_to` edges between role agents, making the planned collaboration path visible without reverting to an organization-chart hierarchy.
 
+Graph view state is continuously synchronized during pointer and wheel interaction and persisted in session storage, so structural updates and full React remounts restore the operator's rotation and zoom. Autonomous graph/node motion pauses for 12 seconds after direct manipulation to prevent post-interaction drift from appearing as a camera reset.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.

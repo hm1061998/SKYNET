@@ -4,6 +4,19 @@ import * as THREE from 'three';
 const KIND_ORDER = ['work_order', 'agent', 'skill', 'task', 'artifact', 'approval'];
 const KIND_LABELS = { work_order: 'Work order', agent: 'AI entities', skill: 'Skills', task: 'Tasks', artifact: 'Artifacts', approval: 'Human gates' };
 const COLORS = { work_order: 0x4fe3ff, agent: 0x50f6c8, skill: 0xff75d8, task: 0x8a70ff, artifact: 0x4fa4d8, approval: 0xffbd59 };
+const VIEW_STORAGE_KEY = 'javis.organizationGraph.view.v1';
+
+function loadViewState() {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(VIEW_STORAGE_KEY) || 'null');
+    if (value && [value.rotationX, value.rotationY, value.zoom].every(Number.isFinite)) return value;
+  } catch { /* Session storage is optional. */ }
+  return { rotationX: -.08, rotationY: 0, zoom: 7.4 };
+}
+
+function storeViewState(value) {
+  try { sessionStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify(value)); } catch { /* Session storage is optional. */ }
+}
 
 function seededUnit(index) {
   const value = Math.sin(index * 12.9898 + 78.233) * 43758.5453;
@@ -70,7 +83,7 @@ function dispose(root) {
 function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks, activity }) {
   const hostRef = useRef(null);
   const runtimeRef = useRef(null);
-  const viewStateRef = useRef({ rotationX: -.08, rotationY: 0, zoom: 7.4 });
+  const viewStateRef = useRef(loadViewState());
   const animationEpochRef = useRef(performance.now());
   const activityRef = useRef(activity);
   activityRef.current = activity;
@@ -195,11 +208,14 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
 
     let dragging = false; let dragDistance = 0; let px = 0; let py = 0; let targetZoom = viewStateRef.current.zoom;
     const pointer = new THREE.Vector2(); const raycaster = new THREE.Raycaster();
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const pointerDown = (event) => { dragging = true; dragDistance = 0; px = event.clientX; py = event.clientY; renderer.domElement.setPointerCapture(event.pointerId); };
-    const pointerMove = (event) => { if (!dragging) return; const dx = event.clientX - px; const dy = event.clientY - py; dragDistance += Math.hypot(dx, dy); graph.rotation.y += dx * .006; graph.rotation.x = THREE.MathUtils.clamp(graph.rotation.x + dy * .004, -.7, .7); px = event.clientX; py = event.clientY; };
-    const pointerUp = (event) => { dragging = false; if (dragDistance > 6) return; const rect = renderer.domElement.getBoundingClientRect(); pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1); raycaster.setFromCamera(pointer, camera); const hits = raycaster.intersectObjects([...nodeMeshes.values()], true); const nodeId = hits[0]?.object.userData.nodeId || hits[0]?.object.parent?.userData.nodeId; if (nodeId) onSelect(nodeId); };
-    const wheel = (event) => { event.preventDefault(); targetZoom = THREE.MathUtils.clamp(targetZoom + event.deltaY * .006, 4.5, 11.5); };
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let reduceMotion = prefersReducedMotion; let resumeMotionTimer;
+    const pauseMotion = () => { reduceMotion = true; window.clearTimeout(resumeMotionTimer); resumeMotionTimer = window.setTimeout(() => { reduceMotion = prefersReducedMotion; }, 12000); };
+    const rememberView = () => { viewStateRef.current = { rotationX: graph.rotation.x, rotationY: graph.rotation.y, zoom: targetZoom }; };
+    const pointerDown = (event) => { dragging = true; pauseMotion(); dragDistance = 0; px = event.clientX; py = event.clientY; renderer.domElement.setPointerCapture(event.pointerId); };
+    const pointerMove = (event) => { if (!dragging) return; const dx = event.clientX - px; const dy = event.clientY - py; dragDistance += Math.hypot(dx, dy); graph.rotation.y += dx * .006; graph.rotation.x = THREE.MathUtils.clamp(graph.rotation.x + dy * .004, -.7, .7); px = event.clientX; py = event.clientY; rememberView(); };
+    const pointerUp = (event) => { dragging = false; rememberView(); storeViewState(viewStateRef.current); if (dragDistance > 6) return; const rect = renderer.domElement.getBoundingClientRect(); pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1); raycaster.setFromCamera(pointer, camera); const hits = raycaster.intersectObjects([...nodeMeshes.values()], true); const nodeId = hits[0]?.object.userData.nodeId || hits[0]?.object.parent?.userData.nodeId; if (nodeId) onSelect(nodeId); };
+    const wheel = (event) => { event.preventDefault(); pauseMotion(); targetZoom = THREE.MathUtils.clamp(targetZoom + event.deltaY * .006, 4.5, 11.5); rememberView(); storeViewState(viewStateRef.current); };
     renderer.domElement.addEventListener('pointerdown', pointerDown); renderer.domElement.addEventListener('pointermove', pointerMove); renderer.domElement.addEventListener('pointerup', pointerUp); renderer.domElement.addEventListener('wheel', wheel, { passive: false });
     const resize = () => { const width = host.clientWidth; const height = host.clientHeight; camera.aspect = width / Math.max(height, 1); camera.updateProjectionMatrix(); renderer.setSize(width, height, false); };
     const observer = new ResizeObserver(resize); observer.observe(host); resize();
@@ -208,7 +224,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
     const activityColors = { idle: new THREE.Color(0x50f6c8), listening: new THREE.Color(0x4fe3ff), typing: new THREE.Color(0x4fe3ff), thinking: new THREE.Color(0x9a70ff), working: new THREE.Color(0xff9650), speaking: new THREE.Color(0x78f0dc) };
     const animate = (now) => { animationId = requestAnimationFrame(animate); const time = (now - started) / 1000; const state = activityRef.current; const energy = state === 'thinking' ? 2 : state === 'working' ? 1.8 : state === 'typing' ? 1.45 : state === 'speaking' ? 1.6 : 1; const activeColor = activityColors[state] || activityColors.idle; camera.position.z += (targetZoom - camera.position.z) * .1; if (!dragging && !reduceMotion) graph.rotation.y += .0008 * energy; core.rotation.x = time * .18 * energy; core.rotation.y = time * .28 * energy; core.scale.setScalar(1 + Math.sin(time * 2.4 * energy) * .07 * energy); core.material.color.lerp(activeColor, .08); coreAura.material.color.lerp(activeColor, .06); coreAura.material.opacity = .075 + (energy - 1) * .07 + Math.max(0, Math.sin(time * 2.8)) * .025; coreAura.scale.setScalar(1 + Math.sin(time * 1.6 * energy) * .1 * energy); signals.material.color.lerp(activeColor, .08); signals.material.size = .035 + (energy - 1) * .018; callosum.material.opacity = .14 + Math.max(0, Math.sin(time * 2.1 * energy)) * .1 * energy; neuralBridge.rotation.z = Math.sin(time * .3 * energy) * .018; nodeMeshes.forEach((item) => { const pulse = .5 + Math.sin(time * 2.2 * energy + item.userData.phase) * .5; const orbit = item.userData.orbit; if (orbit.radius && !reduceMotion) { const angle = orbit.angle + time * orbit.speed * energy; item.position.set(Math.cos(angle) * orbit.radius, orbit.y + Math.sin(time * .45 * energy + item.userData.phase) * .08, Math.sin(angle) * orbit.radius * .72); } item.userData.core.rotation.x += .006 * energy; item.userData.core.rotation.y += .01 * energy; item.userData.halo.scale.setScalar(1 + pulse * (item.userData.worker ? .28 : .16) * energy); }); edgeLines.forEach((line) => { if (line.material.opacity <= 0) return; const source = nodeMeshes.get(line.userData.edge.source); const target = nodeMeshes.get(line.userData.edge.target); if (!source || !target) return; const curve = line.userData.curve; curve.v0.copy(source.position); curve.v2.copy(target.position); curve.v1.copy(source.position).lerp(target.position, .5); curve.v1.z += .35; const attribute = line.geometry.attributes.position; for (let pointIndex = 0; pointIndex < attribute.count; pointIndex += 1) { const point = curve.getPoint(pointIndex / (attribute.count - 1)); attribute.setXYZ(pointIndex, point.x, point.y, point.z); } attribute.needsUpdate = true; }); const signalPositions = signalGeometry.attributes.position; for (let index = 0; index < signalCount; index += 1) { const curve = signalCurves[index % Math.max(signalCurves.length, 1)]; const point = curve ? curve.getPoint((time * (.09 + index % 4 * .015) * energy + index / signalCount) % 1) : new THREE.Vector3(); signalPositions.setXYZ(index, point.x, point.y, point.z); } signalPositions.needsUpdate = true; renderer.render(scene, camera); };
     animationId = requestAnimationFrame(animate);
-    return () => { viewStateRef.current = { rotationX: graph.rotation.x, rotationY: graph.rotation.y, zoom: targetZoom }; runtimeRef.current = null; cancelAnimationFrame(animationId); observer.disconnect(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('wheel', wheel); dispose(graph); renderer.dispose(); renderer.domElement.remove(); };
+    return () => { viewStateRef.current = { rotationX: graph.rotation.x, rotationY: graph.rotation.y, zoom: targetZoom }; storeViewState(viewStateRef.current); window.clearTimeout(resumeMotionTimer); runtimeRef.current = null; cancelAnimationFrame(animationId); observer.disconnect(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('wheel', wheel); dispose(graph); renderer.dispose(); renderer.domElement.remove(); };
   }, [structureSignature, onSelect]);
 
   useEffect(() => {
