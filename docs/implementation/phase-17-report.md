@@ -12,6 +12,8 @@ The redundant visible graph title was removed, the filter toolbar moved into its
 
 The graph content no longer creates a low-level stacking context in fullscreen mode. Entity detail cards use a dedicated layer above the conversation panel, while the graph canvas, toolbar and footer retain their lower interaction layers.
 
+Agent nodes now expose workflow participation independently from global graph activity. The current role is inferred from the controller phase and recent bounded execution logs; assigned agents are marked as planned while execution is active, completed agents are visually subdued, and active/planned assignment edges remain visible without enabling debug links. The inspector and graph legend expose the same state textually.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.

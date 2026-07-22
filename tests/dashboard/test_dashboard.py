@@ -112,6 +112,8 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("chat-hidden", organization)
         self.assertIn("graphTyping", organization)
         self.assertIn("activity={graphTyping", organization)
+        self.assertIn("inferActiveAgent", organization)
+        self.assertIn("activeAgentId={activeAgentId}", organization)
         styles = (ROOT / "src" / "dashboard.css").read_text(encoding="utf-8")
         self.assertIn(".ops-layout.graph-mode .graph-inspector { z-index:12; }", styles)
 
@@ -126,6 +128,9 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Collective mind thinking", graph)
         self.assertIn("activityRef", graph)
         self.assertIn("state === 'thinking'", graph)
+        self.assertIn("Agent workflow states", graph)
+        self.assertIn("processState", graph)
+        self.assertIn("workflowEdge", graph)
         self.assertIn("THREE.WebGLRenderer", graph)
         self.assertIn("THREE.Raycaster", graph)
         self.assertIn("3D rendering is unavailable", graph)
