@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 
@@ -10,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class DashboardContractTests(unittest.TestCase):
     def setUp(self):
-        self.state = DashboardState(ROOT)
+        self.state = DashboardState(ROOT, persist=False)
 
     def test_required_api_projection_contracts(self):
         self.assertEqual(len(self.state.organizations()), 1)
@@ -58,6 +59,31 @@ class DashboardContractTests(unittest.TestCase):
         self.assertNotIn("api_key", rendered)
         self.assertNotIn("password", rendered)
 
+    def test_operator_commands_validate_transition_csrf_and_persist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "organizations").mkdir()
+            shutil.copy(ROOT / "organizations" / "software-company-v1.yaml",
+                        root / "organizations" / "software-company-v1.yaml")
+            state = DashboardState(root, persist=True)
+            with self.assertRaises(DashboardStateError):
+                state.control_work_order("wo-health-check", "pause", "wrong")
+            paused = state.control_work_order("wo-health-check", "pause", state.csrf_token)
+            self.assertEqual(paused["status"], "paused")
+            self.assertTrue(state.state_path.exists())
+            restored = DashboardState(root, persist=True)
+            self.assertEqual(restored.work_orders()[0]["status"], "paused")
+            resumed = restored.control_work_order("wo-health-check", "resume", restored.csrf_token)
+            self.assertEqual(resumed["status"], "waiting_approval")
+            approval = restored.approvals()[0]
+            restored.decide_approval(approval["id"], approval["action_hash"],
+                                     "rejected", restored.csrf_token)
+            self.assertEqual(restored.work_orders()[0]["status"], "blocked")
+            restored.control_work_order("wo-health-check", "resume", restored.csrf_token)
+            self.assertEqual(restored.approvals()[0]["status"], "pending")
+            with self.assertRaises(DashboardStateError):
+                restored.retry_task("task-code_review", restored.csrf_token)
+
 
 class DashboardSourceSmokeTests(unittest.TestCase):
     def test_xss_fixture_has_no_raw_html_execution_sink(self):
@@ -79,6 +105,8 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Could not load organization state", organization)
         self.assertIn("LiveOrganizationGraph", organization)
         self.assertIn("Living AI Organization", organization)
+        self.assertIn("Pause Work Order", organization)
+        self.assertIn("Retry task", organization)
 
     def test_live_graph_exposes_operational_interactions(self):
         graph = (ROOT / "src" / "LiveOrganizationGraph.jsx").read_text(encoding="utf-8")
@@ -104,6 +132,8 @@ class DashboardSourceSmokeTests(unittest.TestCase):
                       "/api/v1/topology"):
             self.assertIn(route, server)
         self.assertIn("/api/v1/traces", server)
+        self.assertIn("/api/v1/work-orders/control", server)
+        self.assertIn("/api/v1/tasks/retry", server)
 
 
 if __name__ == "__main__":

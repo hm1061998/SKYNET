@@ -40,7 +40,7 @@ DASHBOARD_DIR = PROJECT_ROOT / "dashboard" / "dist"
 DASHBOARD = DASHBOARD_DIR / "index.html"
 AGENT_IDENTITY_PATH = PROJECT_ROOT / "agent.config.json"
 AGENT: SkillAgent | None = None
-DASHBOARD_STATE = DashboardState(PROJECT_ROOT)
+DASHBOARD_STATE = DashboardState(PROJECT_ROOT, persist=True)
 
 
 def agent_name() -> str:
@@ -331,6 +331,21 @@ class Handler(BaseHTTPRequestHandler):
                 result = DASHBOARD_STATE.decide_approval(
                     str(body.get("approval_id", "")), str(body.get("action_hash", "")),
                     str(body.get("decision", "")), self.headers.get("X-CSRF-Token", ""))
+                return self._json({"data": result})
+            except DashboardStateError as e:
+                return self._json({"error": str(e)}, 403)
+        if self.path == "/api/v1/work-orders/control":
+            try:
+                result = DASHBOARD_STATE.control_work_order(
+                    str(body.get("work_order_id", "")), str(body.get("action", "")),
+                    self.headers.get("X-CSRF-Token", ""))
+                return self._json({"data": result})
+            except DashboardStateError as e:
+                return self._json({"error": str(e)}, 403)
+        if self.path == "/api/v1/tasks/retry":
+            try:
+                result = DASHBOARD_STATE.retry_task(
+                    str(body.get("task_id", "")), self.headers.get("X-CSRF-Token", ""))
                 return self._json({"data": result})
             except DashboardStateError as e:
                 return self._json({"error": str(e)}, 403)

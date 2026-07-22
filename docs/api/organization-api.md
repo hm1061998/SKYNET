@@ -22,4 +22,13 @@ The MVP projection is file-backed/structured and redacted. `topology` returns sa
 
 Approval decisions use `POST /api/v1/approvals/decision` with JSON fields `approval_id`, `action_hash`, `decision` (`approved` or `rejected`) and the session token in `X-CSRF-Token`. Both ID and exact action hash must match current state. High-risk confirmation is also required in the UI. Invalid binding or CSRF returns HTTP 403.
 
-The server remains bound to loopback by default. The CSRF token is an appropriate MVP control for this local architecture; a remotely exposed deployment must add authenticated sessions, origin enforcement and authorization roles. Legacy `/api/message`, `/api/approve`, `/api/reject`, job polling, model configuration and TTS routes remain unchanged.
+Bounded operator commands are available for the local operations console:
+
+```text
+POST /api/v1/work-orders/control  { work_order_id, action: pause|resume|cancel }
+POST /api/v1/tasks/retry          { task_id }
+```
+
+Both require the session CSRF token. Work Order transitions are allowlisted by current state; retry is accepted only for failed or blocked tasks. Successful commands are atomically persisted under `.javis-runtime/operations.json` and appended to the structured activity timeline. The runtime file is local state and is excluded from Git.
+
+The server remains bound to loopback by default. The CSRF token is an appropriate control for this local architecture; a remotely exposed deployment must add authenticated sessions, origin enforcement and authorization roles. Legacy `/api/message`, `/api/approve`, `/api/reject`, job polling, model configuration and TTS routes remain unchanged.

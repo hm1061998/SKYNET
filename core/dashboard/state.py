@@ -4,9 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from datetime import datetime, timezone
 
 from core.company import OrganizationTemplateLoader, STAGES
 from core.governance import action_hash
@@ -22,6 +24,7 @@ class DashboardState:
     """MVP file-backed organization projection; no chain-of-thought or secrets."""
 
     project_root: Path
+    persist: bool = False
 
     def __post_init__(self) -> None:
         self.template = OrganizationTemplateLoader().load(
@@ -31,7 +34,52 @@ class DashboardState:
         self.approval_action = "deliver_health_check_candidate"
         self.approval_arguments = {"work_order_id": "wo-health-check", "candidate_hash": "sha256:candidate-v2"}
         self.approval_hash = action_hash(self.approval_action, self.approval_arguments)
-        self.approval_status = "pending"
+        self.state_path = self.project_root / ".javis-runtime" / "operations.json"
+        self._lock = threading.RLock()
+        self._state = self._load_state()
+        self.approval_status = self._state["approval_status"]
+
+    def _load_state(self) -> dict[str, Any]:
+        default = {"version": 1, "work_order_status": "waiting_approval",
+                   "task_statuses": {}, "approval_status": "pending", "events": []}
+        if not self.persist or not self.state_path.exists():
+            return default
+        try:
+            value = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise DashboardStateError(f"invalid operations state: {exc}") from exc
+        if not isinstance(value, dict) or value.get("version") != 1:
+            raise DashboardStateError("unsupported operations state version")
+        allowed_work_order = {"waiting_approval", "paused", "blocked", "completed", "cancelled"}
+        allowed_task = {"ready", "blocked", "failed", "completed", "waiting_approval", "cancelled"}
+        if value.get("work_order_status", default["work_order_status"]) not in allowed_work_order:
+            raise DashboardStateError("invalid persisted Work Order status")
+        if not isinstance(value.get("task_statuses", {}), dict):
+            raise DashboardStateError("invalid persisted task states")
+        if any(status not in allowed_task for status in value.get("task_statuses", {}).values()):
+            raise DashboardStateError("invalid persisted task status")
+        if not isinstance(value.get("events", []), list):
+            raise DashboardStateError("invalid persisted events")
+        if value.get("approval_status", "pending") not in {"pending", "approved", "rejected"}:
+            raise DashboardStateError("invalid persisted approval status")
+        return {**default, **value, "task_statuses": dict(value.get("task_statuses", {})),
+                "events": list(value.get("events", []))[-200:]}
+
+    def _save_state(self) -> None:
+        if not self.persist:
+            return
+        with self._lock:
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.state_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(self._state, ensure_ascii=False, indent=2), encoding="utf-8")
+            temporary.replace(self.state_path)
+
+    def _record_event(self, type: str, summary: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        self._state["events"].append({"id": f"event-runtime-{secrets.token_hex(6)}",
+                                      "type": type, "occurred_at": now, "summary": summary,
+                                      "work_order_id": "wo-health-check"})
+        self._state["events"] = self._state["events"][-200:]
 
     def organizations(self) -> list[dict[str, Any]]:
         return [{"id": self.template.template_id, "version": self.template.version,
@@ -43,9 +91,9 @@ class DashboardState:
         tasks = self.tasks("wo-health-check")
         completed = sum(item["status"] == "completed" for item in tasks)
         return [{"id": "wo-health-check", "goal": "Add a health-check command",
-                 "title": "Health-check feature delivery", "status": "waiting_approval",
+                 "title": "Health-check feature delivery", "status": self._state["work_order_status"],
                  "accountable_owner": "chief_of_staff", "progress": completed / len(tasks),
-                 "blockers": ["Human final approval required"],
+                 "blockers": self._work_order_blockers(),
                  "pending_approval_ids": [self.approval_id] if self.approval_status == "pending" else [],
                  "budget": {"tokens_used": 1840, "tokens_remaining": 48160,
                             "cost_units_used": 0.0, "tool_calls": 11},
@@ -63,7 +111,7 @@ class DashboardState:
             result.append({"id": f"task-{stage.id}", "work_order_id": work_order_id,
                 "title": stage.id.replace("_", " ").title(), "owner": stage.owner_role,
                 "dependencies": [f"task-{item}" for item in stage.dependencies],
-                "status": "waiting_approval" if waiting else "completed", "retry_count": 1 if stage.id == "code_review" else 0,
+                "status": self._state["task_statuses"].get(f"task-{stage.id}", "waiting_approval" if waiting else "completed"), "retry_count": 1 if stage.id == "code_review" else 0,
                 "risk": "high" if stage.id == "security_release_review" else "medium",
                 "approval_gate": self.approval_id if waiting else None,
                 "artifact_outputs": self._task_artifacts(stage.id),
@@ -152,9 +200,10 @@ class DashboardState:
     def events(self) -> list[dict[str, Any]]:
         names = ("goal_received", "task_assigned", "agent_started", "artifact_created",
                  "review_requested", "task_retried", "task_completed", "approval_needed")
-        return [{"id": f"event-{index}", "type": name, "occurred_at": f"2026-07-22T12:{index:02d}:00+00:00",
+        base = [{"id": f"event-{index}", "type": name, "occurred_at": f"2026-07-22T12:{index:02d}:00+00:00",
                  "summary": name.replace("_", " ").title(), "work_order_id": "wo-health-check"}
                 for index, name in enumerate(names)]
+        return base + self._state["events"]
 
     def metrics(self) -> dict[str, Any]:
         calculator = MetricsCalculator()
@@ -203,8 +252,68 @@ class DashboardState:
             raise DashboardStateError("approval ID or action hash mismatch")
         if decision not in {"approved", "rejected"}:
             raise DashboardStateError("invalid approval decision")
-        self.approval_status = decision
+        with self._lock:
+            self.approval_status = decision
+            self._state["approval_status"] = decision
+            if decision == "approved":
+                self._state["work_order_status"] = "completed"
+                self._state["task_statuses"]["task-final_approval_delivery"] = "completed"
+            else:
+                self._state["work_order_status"] = "blocked"
+                self._state["task_statuses"]["task-final_approval_delivery"] = "blocked"
+            self._record_event(f"approval_{decision}", f"Human {decision} final delivery")
+            self._save_state()
         return {"id": approval_id, "status": decision, "action_hash": supplied_hash}
+
+    def control_work_order(self, work_order_id: str, action: str, csrf_token: str) -> dict[str, Any]:
+        """Apply a bounded local operator command and persist its audited projection."""
+        if csrf_token != self.csrf_token:
+            raise DashboardStateError("invalid CSRF token")
+        if work_order_id != "wo-health-check":
+            raise DashboardStateError("unknown Work Order")
+        with self._lock:
+            current = self._state["work_order_status"]
+            allowed = {"waiting_approval": {"pause": "paused", "cancel": "cancelled"},
+                       "paused": {"resume": "waiting_approval", "cancel": "cancelled"},
+                       "blocked": {"resume": "waiting_approval", "cancel": "cancelled"}}
+            target = allowed.get(current, {}).get(action)
+            if not target:
+                raise DashboardStateError(f"cannot {action} Work Order from {current}")
+            self._state["work_order_status"] = target
+            if current == "blocked" and action == "resume":
+                self.approval_status = "pending"
+                self._state["approval_status"] = "pending"
+                self._state["task_statuses"].pop("task-final_approval_delivery", None)
+            self._record_event(f"work_order_{action}", f"Operator changed Work Order from {current} to {target}")
+            self._save_state()
+        return {"id": work_order_id, "status": target, "action": action}
+
+    def retry_task(self, task_id: str, csrf_token: str) -> dict[str, Any]:
+        """Retry only failed or blocked tasks; other states are denied."""
+        if csrf_token != self.csrf_token:
+            raise DashboardStateError("invalid CSRF token")
+        task = self.task(task_id)
+        if task is None:
+            raise DashboardStateError("unknown task")
+        if task["status"] not in {"failed", "blocked"}:
+            raise DashboardStateError(f"cannot retry task from {task['status']}")
+        with self._lock:
+            self._state["task_statuses"][task_id] = "ready"
+            self._record_event("task_retry_requested", f"Operator requested retry for {task_id}")
+            self._save_state()
+        return {"id": task_id, "status": "ready"}
+
+    def _work_order_blockers(self) -> list[str]:
+        status = self._state["work_order_status"]
+        if status == "waiting_approval":
+            return ["Human final approval required"]
+        if status == "paused":
+            return ["Paused by operator"]
+        if status == "cancelled":
+            return ["Cancelled by operator"]
+        if status == "blocked":
+            return ["Final approval was rejected"]
+        return []
 
     @staticmethod
     def _task_artifacts(stage: str) -> list[str]:

@@ -51,6 +51,7 @@ dist/
 tmp/
 temp/
 demo/output/
+.javis-runtime/
 
 # Editors and operating systems
 .idea/
