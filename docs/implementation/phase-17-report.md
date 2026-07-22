@@ -4,6 +4,8 @@
 
 The operations console now prioritizes the living organization graph as the main interaction surface. The fixed graph inspector and keyboard entity list were replaced by contextual overlays. Operators can hide the chat panel or enter a graph focus mode without unmounting the conversation or rebuilding the Three.js scene.
 
+The follow-up polish compresses the product header into a single 52px control bar and applies a narrow themed scrollbar to the entity index, removing the intrusive native light scrollbar.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.
