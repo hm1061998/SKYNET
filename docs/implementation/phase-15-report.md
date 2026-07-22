@@ -8,6 +8,8 @@ Visual refinement based on operator review now matches Chat mode more closely: t
 
 The two wireframe ellipsoid shells were removed after visual review. Hemisphere form now comes entirely from the particle cortex and dendrite network. A subtle animated corpus-callosum arc and seven curved neural bridges provide central structure without enclosing the brain in artificial oval geometry.
 
+Node labels were redesigned as compact translucent micro-pills at roughly forty percent of the previous footprint; only the selected entity receives full label opacity. AI entities, tasks, and approval junctions now move on deterministic, phase-offset elliptical orbits around the neural core with a subtle vertical drift. Visible relationship curves and signal particles track their moving endpoints. Operating-system reduced-motion preference disables automatic orbit and graph rotation.
+
 ## 2. Architecture decisions
 
 - Preserved `/api/v1/topology`; visualization semantics changed without changing the domain contract.

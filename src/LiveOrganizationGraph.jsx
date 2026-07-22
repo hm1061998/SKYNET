@@ -36,15 +36,16 @@ function layout(nodes, edges) {
 function labelSprite(text, color) {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
-  canvas.width = 512; canvas.height = 72;
-  context.fillStyle = 'rgba(3,8,20,.82)'; context.fillRect(0, 0, 512, 72);
-  context.strokeStyle = `#${color.toString(16).padStart(6, '0')}`; context.strokeRect(1, 1, 510, 70);
-  context.fillStyle = '#e9fbff'; context.font = '20px Consolas'; context.textAlign = 'center'; context.textBaseline = 'middle';
-  const compact = text.length > 31 ? `${text.slice(0, 30)}…` : text;
-  context.fillText(compact, 256, 37);
+  canvas.width = 320; canvas.height = 48;
+  context.beginPath(); context.roundRect(3, 5, 314, 38, 19);
+  context.fillStyle = 'rgba(3,8,20,.68)'; context.fill();
+  context.strokeStyle = `#${color.toString(16).padStart(6, '0')}`; context.globalAlpha = .45; context.stroke(); context.globalAlpha = 1;
+  context.fillStyle = '#dff8ff'; context.font = '18px Consolas'; context.textAlign = 'center'; context.textBaseline = 'middle';
+  const compact = text.length > 23 ? `${text.slice(0, 22)}…` : text;
+  context.fillText(compact, 160, 25);
   const texture = new THREE.CanvasTexture(canvas);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
-  sprite.scale.set(1.45, .2, 1); sprite.position.y = -.29; sprite.userData.texture = texture;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: .48, depthWrite: false }));
+  sprite.scale.set(.86, .13, 1); sprite.position.y = -.24; sprite.userData.texture = texture;
   return sprite;
 }
 
@@ -147,7 +148,10 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
         core.material.color.setHex(0xff9650); core.material.emissive.setHex(0xff9650);
         group.userData.worker = true;
       }
+      const orbitRadius = node.kind === 'work_order' ? 0 : Math.max(.55, Math.hypot(node.position.x, node.position.z));
       group.userData.phase = index * .73; group.userData.core = core; group.userData.halo = halo;
+      group.userData.label = group.children.find((child) => child.isSprite) || null;
+      group.userData.orbit = { radius: orbitRadius, angle: Math.atan2(node.position.z, node.position.x), y: node.position.y, speed: .045 + index % 5 * .012 };
       nodeMeshes.set(node.id, group); graph.add(group);
     });
 
@@ -161,7 +165,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(30));
       const color = edge.kind === 'gated_by' ? 0xffbd59 : edge.kind === 'reports_to' ? 0x876dba : 0x285c72;
       const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: debugLinks ? .28 : 0 }));
-      line.userData.edge = edge; line.userData.baseColor = color;
+      line.userData.edge = edge; line.userData.baseColor = color; line.userData.curve = curve;
       edgeLines.push(line); graph.add(line);
     });
     const signalCount = Math.min(22, Math.max(8, signalCurves.length));
@@ -173,6 +177,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
 
     let dragging = false; let dragDistance = 0; let px = 0; let py = 0; let targetZoom = viewStateRef.current.zoom;
     const pointer = new THREE.Vector2(); const raycaster = new THREE.Raycaster();
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const pointerDown = (event) => { dragging = true; dragDistance = 0; px = event.clientX; py = event.clientY; renderer.domElement.setPointerCapture(event.pointerId); };
     const pointerMove = (event) => { if (!dragging) return; const dx = event.clientX - px; const dy = event.clientY - py; dragDistance += Math.hypot(dx, dy); graph.rotation.y += dx * .006; graph.rotation.x = THREE.MathUtils.clamp(graph.rotation.x + dy * .004, -.7, .7); px = event.clientX; py = event.clientY; };
     const pointerUp = (event) => { dragging = false; if (dragDistance > 6) return; const rect = renderer.domElement.getBoundingClientRect(); pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1); raycaster.setFromCamera(pointer, camera); const hits = raycaster.intersectObjects([...nodeMeshes.values()], true); const nodeId = hits[0]?.object.userData.nodeId || hits[0]?.object.parent?.userData.nodeId; if (nodeId) onSelect(nodeId); };
@@ -182,7 +187,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
     const observer = new ResizeObserver(resize); observer.observe(host); resize();
 
     let animationId; const started = performance.now();
-    const animate = (now) => { animationId = requestAnimationFrame(animate); const time = (now - started) / 1000; camera.position.z += (targetZoom - camera.position.z) * .1; if (!dragging) graph.rotation.y += .0008; core.rotation.x = time * .18; core.rotation.y = time * .28; core.scale.setScalar(1 + Math.sin(time * 2.4) * .07); coreAura.scale.setScalar(1 + Math.sin(time * 1.6) * .1); callosum.material.opacity = .14 + Math.max(0, Math.sin(time * 2.1)) * .1; neuralBridge.rotation.z = Math.sin(time * .3) * .018; const signalPositions = signalGeometry.attributes.position; for (let index = 0; index < signalCount; index += 1) { const curve = signalCurves[index % Math.max(signalCurves.length, 1)]; const point = curve ? curve.getPoint((time * (.09 + index % 4 * .015) + index / signalCount) % 1) : new THREE.Vector3(); signalPositions.setXYZ(index, point.x, point.y, point.z); } signalPositions.needsUpdate = true; nodeMeshes.forEach((item) => { const pulse = .5 + Math.sin(time * 2.2 + item.userData.phase) * .5; item.userData.core.rotation.x += .006; item.userData.core.rotation.y += .01; item.userData.halo.scale.setScalar(1 + pulse * (item.userData.worker ? .28 : .16)); }); renderer.render(scene, camera); };
+    const animate = (now) => { animationId = requestAnimationFrame(animate); const time = (now - started) / 1000; camera.position.z += (targetZoom - camera.position.z) * .1; if (!dragging && !reduceMotion) graph.rotation.y += .0008; core.rotation.x = time * .18; core.rotation.y = time * .28; core.scale.setScalar(1 + Math.sin(time * 2.4) * .07); coreAura.scale.setScalar(1 + Math.sin(time * 1.6) * .1); callosum.material.opacity = .14 + Math.max(0, Math.sin(time * 2.1)) * .1; neuralBridge.rotation.z = Math.sin(time * .3) * .018; nodeMeshes.forEach((item) => { const pulse = .5 + Math.sin(time * 2.2 + item.userData.phase) * .5; const orbit = item.userData.orbit; if (orbit.radius && !reduceMotion) { const angle = orbit.angle + time * orbit.speed; item.position.set(Math.cos(angle) * orbit.radius, orbit.y + Math.sin(time * .45 + item.userData.phase) * .08, Math.sin(angle) * orbit.radius * .72); } item.userData.core.rotation.x += .006; item.userData.core.rotation.y += .01; item.userData.halo.scale.setScalar(1 + pulse * (item.userData.worker ? .28 : .16)); }); edgeLines.forEach((line) => { if (line.material.opacity <= 0) return; const source = nodeMeshes.get(line.userData.edge.source); const target = nodeMeshes.get(line.userData.edge.target); if (!source || !target) return; const curve = line.userData.curve; curve.v0.copy(source.position); curve.v2.copy(target.position); curve.v1.copy(source.position).lerp(target.position, .5); curve.v1.z += .35; const attribute = line.geometry.attributes.position; for (let pointIndex = 0; pointIndex < attribute.count; pointIndex += 1) { const point = curve.getPoint(pointIndex / (attribute.count - 1)); attribute.setXYZ(pointIndex, point.x, point.y, point.z); } attribute.needsUpdate = true; }); const signalPositions = signalGeometry.attributes.position; for (let index = 0; index < signalCount; index += 1) { const curve = signalCurves[index % Math.max(signalCurves.length, 1)]; const point = curve ? curve.getPoint((time * (.09 + index % 4 * .015) + index / signalCount) % 1) : new THREE.Vector3(); signalPositions.setXYZ(index, point.x, point.y, point.z); } signalPositions.needsUpdate = true; renderer.render(scene, camera); };
     animationId = requestAnimationFrame(animate);
     return () => { viewStateRef.current = { rotationX: graph.rotation.x, rotationY: graph.rotation.y, zoom: targetZoom }; runtimeRef.current = null; cancelAnimationFrame(animationId); observer.disconnect(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('wheel', wheel); dispose(graph); renderer.dispose(); renderer.domElement.remove(); };
   }, [nodes, edges, onSelect, debugLinks]);
@@ -194,6 +199,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       const active = id === selectedId;
       item.scale.setScalar(active ? 1.22 : 1);
       item.userData.halo.material.opacity = active ? .34 : .08;
+      if (item.userData.label) item.userData.label.material.opacity = active ? 1 : .48;
     });
     runtime.edgeLines.forEach((line) => {
       const edge = line.userData.edge;

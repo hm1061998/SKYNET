@@ -129,6 +129,9 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("neuralBridge", graph)
         self.assertIn("callosum", graph)
         self.assertNotIn("SphereGeometry(1.72", graph)
+        self.assertIn("context.roundRect", graph)
+        self.assertIn("userData.orbit", graph)
+        self.assertIn("prefers-reduced-motion", graph)
 
     def test_server_keeps_legacy_and_v1_routes(self):
         server = (ROOT / "server.py").read_text(encoding="utf-8")
