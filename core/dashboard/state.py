@@ -87,6 +87,50 @@ class DashboardState:
                        "expires_at": "2026-07-22T13:00:00+00:00"})
         return agents
 
+    def topology(self) -> dict[str, Any]:
+        """Return a sanitized live topology for the operations graph."""
+        work_orders = self.work_orders()
+        tasks = self.tasks(work_orders[0]["id"]) if work_orders else []
+        agents = self.agents()
+        approvals = self.approvals()
+        artifacts = self.artifacts()
+        nodes: list[dict[str, Any]] = []
+        edges: list[dict[str, str]] = []
+
+        for work_order in work_orders:
+            nodes.append({"id": work_order["id"], "kind": "work_order",
+                          "label": work_order["title"], "status": work_order["status"],
+                          "detail": work_order["goal"]})
+        for agent in agents:
+            nodes.append({"id": agent["id"], "kind": "agent", "subkind": agent["kind"],
+                          "label": agent["name"], "status": agent["status"],
+                          "detail": agent["department"], "current_task": agent["current_task"]})
+            if agent["current_task"]:
+                edges.append({"source": agent["id"], "target": agent["current_task"],
+                              "kind": "assigned_to"})
+        for line in self.template.reporting_lines:
+            edges.append({"source": line["report"], "target": line["manager"],
+                          "kind": "reports_to"})
+        for task in tasks:
+            nodes.append({"id": task["id"], "kind": "task", "label": task["title"],
+                          "status": task["status"], "detail": task["blocked_reason"] or task["owner"],
+                          "risk": task["risk"]})
+            edges.append({"source": task["work_order_id"], "target": task["id"], "kind": "contains"})
+            for dependency in task["dependencies"]:
+                edges.append({"source": dependency, "target": task["id"], "kind": "depends_on"})
+            if task["approval_gate"]:
+                edges.append({"source": task["id"], "target": task["approval_gate"], "kind": "gated_by"})
+        for approval in approvals:
+            nodes.append({"id": approval["id"], "kind": "approval", "label": approval["requested_action"],
+                          "status": approval["status"], "detail": approval["reason"],
+                          "risk": approval["risk"]})
+        for artifact in artifacts:
+            nodes.append({"id": artifact["id"], "kind": "artifact", "label": artifact["path"],
+                          "status": artifact["review_status"], "detail": artifact["producer"]})
+            edges.append({"source": artifact["source_task"], "target": artifact["id"], "kind": "produces"})
+        return {"generated_at": self.events()[-1]["occurred_at"], "nodes": nodes, "edges": edges,
+                "legend": ["work_order", "agent", "task", "approval", "artifact"]}
+
     def artifacts(self) -> list[dict[str, Any]]:
         paths = [path for stage in STAGES for path in self._task_artifacts(stage.id)]
         return [{"id": f"artifact-{index}", "path": path, "version": 2 if "patch" in path else 1,

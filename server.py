@@ -251,6 +251,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/v1/organizations": DASHBOARD_STATE.organizations,
                 "/api/v1/work-orders": DASHBOARD_STATE.work_orders,
                 "/api/v1/agents": DASHBOARD_STATE.agents,
+                "/api/v1/topology": DASHBOARD_STATE.topology,
                 "/api/v1/artifacts": DASHBOARD_STATE.artifacts,
                 "/api/v1/approvals": DASHBOARD_STATE.approvals,
                 "/api/v1/events": DASHBOARD_STATE.events,

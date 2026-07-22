@@ -19,6 +19,11 @@ class DashboardContractTests(unittest.TestCase):
         self.assertEqual(len(self.state.tasks(work_order["id"])), 8)
         self.assertIsNotNone(self.state.task("task-code_review"))
         self.assertEqual(len([item for item in self.state.agents() if item["kind"] == "role"]), 7)
+        topology = self.state.topology()
+        self.assertTrue(topology["nodes"])
+        self.assertTrue(topology["edges"])
+        self.assertIn("assigned_to", {item["kind"] for item in topology["edges"]})
+        self.assertIn("depends_on", {item["kind"] for item in topology["edges"]})
         self.assertTrue(self.state.artifacts())
         self.assertTrue(self.state.approvals())
         self.assertTrue(self.state.events())
@@ -57,10 +62,12 @@ class DashboardContractTests(unittest.TestCase):
 class DashboardSourceSmokeTests(unittest.TestCase):
     def test_xss_fixture_has_no_raw_html_execution_sink(self):
         component = (ROOT / "src" / "OrganizationDashboard.jsx").read_text(encoding="utf-8")
+        graph = (ROOT / "src" / "LiveOrganizationGraph.jsx").read_text(encoding="utf-8")
         fixture = '<img src=x onerror="fetch(\'/secrets\')"><script>alert(1)</script>'
         self.assertNotIn("dangerouslySetInnerHTML", component)
         self.assertNotIn(".innerHTML", component)
         self.assertNotIn(fixture, component)
+        self.assertNotIn("dangerouslySetInnerHTML", graph)
 
     def test_legacy_and_organization_dashboard_smoke(self):
         app = (ROOT / "src" / "App.jsx").read_text(encoding="utf-8")
@@ -70,12 +77,22 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Open legacy chat", organization)
         self.assertIn("No active Work Order", organization)
         self.assertIn("Could not load organization state", organization)
+        self.assertIn("LiveOrganizationGraph", organization)
+        self.assertIn("Living AI Organization", organization)
+
+    def test_live_graph_exposes_operational_interactions(self):
+        graph = (ROOT / "src" / "LiveOrganizationGraph.jsx").read_text(encoding="utf-8")
+        self.assertIn("Graph filters", graph)
+        self.assertIn("Open task details", graph)
+        self.assertIn("aria-live", graph)
+        self.assertIn("onKeyDown", graph)
 
     def test_server_keeps_legacy_and_v1_routes(self):
         server = (ROOT / "server.py").read_text(encoding="utf-8")
         for route in ("/api/message", "/api/approve", "/api/v1/organizations",
                       "/api/v1/work-orders", "/api/v1/agents", "/api/v1/artifacts",
-                      "/api/v1/approvals", "/api/v1/events", "/api/v1/metrics"):
+                      "/api/v1/approvals", "/api/v1/events", "/api/v1/metrics",
+                      "/api/v1/topology"):
             self.assertIn(route, server)
         self.assertIn("/api/v1/traces", server)
 
