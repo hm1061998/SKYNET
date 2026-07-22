@@ -107,6 +107,9 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Living AI Organization", organization)
         self.assertIn("Pause Work Order", organization)
         self.assertIn("Retry task", organization)
+        self.assertIn("Focus graph", organization)
+        self.assertIn("Hide chat", organization)
+        self.assertIn("chat-hidden", organization)
 
     def test_live_graph_exposes_operational_interactions(self):
         graph = (ROOT / "src" / "LiveOrganizationGraph.jsx").read_text(encoding="utf-8")
@@ -114,6 +117,8 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Open task details", graph)
         self.assertIn("aria-live", graph)
         self.assertIn("Keyboard entity list", graph)
+        self.assertIn("Close inspector", graph)
+        self.assertIn("Drag to orbit", graph)
         self.assertIn("THREE.WebGLRenderer", graph)
         self.assertIn("THREE.Raycaster", graph)
         self.assertIn("3D rendering is unavailable", graph)

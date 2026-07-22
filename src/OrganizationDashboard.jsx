@@ -22,6 +22,8 @@ export default function OrganizationDashboard({ controller, onLegacy }) {
   const [selectedTask, setSelectedTask] = useState(null);
   const [busyApproval, setBusyApproval] = useState('');
   const [busyCommand, setBusyCommand] = useState('');
+  const [chatOpen, setChatOpen] = useState(true);
+  const [focusMode, setFocusMode] = useState(false);
 
   const load = async () => {
     setError('');
@@ -70,5 +72,7 @@ export default function OrganizationDashboard({ controller, onLegacy }) {
     metrics: <section><header className="ops-view-head"><h2>Cost & Performance</h2></header><pre className="safe-json">{JSON.stringify(data.metrics, null, 2)}</pre></section>,
     config: <section><header className="ops-view-head"><div><span className="eyebrow">Validated · read only</span><h2>Organization Configuration</h2></div></header><pre className="safe-json">{JSON.stringify(data.configuration, null, 2)}</pre></section>
   };
-  return <main className="ops-shell"><header className="ops-top"><div><span className="eyebrow">Operations console</span><h1>AI Software Company</h1></div><div className="ops-top-actions"><button onClick={onLegacy}>Chat mode</button><span className={pending.length ? 'approval-beacon active' : 'approval-beacon'}>{pending.length} approvals</span></div></header><div className="ops-layout"><nav aria-label="Dashboard views">{Object.entries(labels).map(([id,label]) => <button className={tab===id?'active':''} onClick={() => setTab(id)} key={id}>{label}</button>)}</nav><div className="ops-content">{error && <div className="ops-error" role="alert">Refresh failed: {error}</div>}{render[tab]}</div><aside className="ops-chat"><ConversationPanel controller={controller}/></aside></div></main>;
+  const graphView = tab === 'organization';
+  const layoutClass = ['ops-layout', chatOpen ? '' : 'chat-hidden', focusMode && graphView ? 'focus-mode' : ''].filter(Boolean).join(' ');
+  return <main className="ops-shell"><header className="ops-top"><div><span className="eyebrow">Operations console</span><h1>AI Software Company</h1></div><div className="ops-top-actions">{graphView && <button aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? 'Exit focus' : 'Focus graph'}</button>}<button aria-pressed={!chatOpen} onClick={() => setChatOpen((value) => !value)}>{chatOpen ? 'Hide chat' : 'Show chat'}</button><button onClick={onLegacy}>Chat mode</button><span className={pending.length ? 'approval-beacon active' : 'approval-beacon'}>{pending.length} approvals</span></div></header><div className={layoutClass}><nav aria-label="Dashboard views">{Object.entries(labels).map(([id,label]) => <button className={tab===id?'active':''} onClick={() => { setTab(id); setFocusMode(false); }} key={id}>{label}</button>)}</nav><div className="ops-content">{error && <div className="ops-error" role="alert">Refresh failed: {error}</div>}{render[tab]}</div><aside className="ops-chat" aria-hidden={!chatOpen || (focusMode && graphView)}><ConversationPanel controller={controller}/></aside></div></main>;
 }
