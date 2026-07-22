@@ -1,0 +1,17 @@
+{
+  "runtime": {"organization_enabled": false, "legacy_enabled": true},
+  "execution": {"mode": "dry_run", "allow_legacy_unsafe": false},
+  "storage": {"backend": "sqlite"},
+  "ui": {"mode": "legacy"},
+  "roles": {
+    "chat": {"provider": "mock", "model": "mock-1"},
+    "work": {"provider": "mock", "model": "mock-1"}
+  },
+  "providers": {
+    "openai": {"api_key_env": "OPENAI_API_KEY"},
+    "anthropic": {"api_key_env": "ANTHROPIC_API_KEY"},
+    "gemini": {"api_key_env": "GEMINI_API_KEY"},
+    "deepseek": {"api_key_env": "DEEPSEEK_API_KEY"},
+    "mock": {}
+  }
+}

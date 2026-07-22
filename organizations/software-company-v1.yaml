@@ -1,7 +1,7 @@
 {
   "id": "ai_software_company",
   "version": "1",
-  "constitution_reference": "organizations/constitution-v1.yaml",
+  "constitution_reference": "policies/default-constitution-v1.yaml",
   "departments": [
     {"id": "executive", "name": "Executive Office"},
     {"id": "product", "name": "Product"},

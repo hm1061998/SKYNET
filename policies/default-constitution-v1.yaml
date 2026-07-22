@@ -1,0 +1,13 @@
+{
+  "version": "1",
+  "principles": ["deny_by_default", "least_privilege", "human_approval_for_external_effects", "preserve_legacy_compatibility"],
+  "policies": [
+    {"action": "read_repository", "effect": "require_explicit_grant", "reason": "Repository scope must be explicit"},
+    {"action": "write_file", "effect": "require_explicit_grant", "reason": "Writes require an isolated workspace grant"},
+    {"action": "run_tests", "effect": "allow", "reason": "Deterministic offline tests are allowed"},
+    {"action": "send_network_request", "effect": "deny_unless_allowlisted", "reason": "Network is denied unless explicitly allowlisted"},
+    {"action": "install_dependency", "effect": "require_human_approval", "reason": "Host installation requires a human"},
+    {"action": "deploy_production", "effect": "require_human_approval", "reason": "Production deployment is never autonomous"},
+    {"action": "access_secret", "effect": "require_human_approval", "reason": "Secret access requires exact approval"}
+  ]
+}

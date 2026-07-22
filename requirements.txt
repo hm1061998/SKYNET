@@ -1,7 +1,7 @@
 # Skill Agent — phụ thuộc
 #
-# LLM SDK: chỉ cần cài của provider bạn dùng. Agent sẽ TỰ cài khi cần,
-# nên bạn có thể bỏ trống file này. Liệt kê ở đây cho tiện.
+# LLM SDK: chỉ cài thủ công provider đã review khi cần tích hợp thật.
+# Demo/test offline không cần package này. Safe mode không tự cài dependency.
 #
 openai>=1.0.0            # dùng cho provider: openai  VÀ  deepseek (base_url)
 # anthropic>=0.39.0      # provider: anthropic

@@ -1,4 +1,69 @@
-# Skill Agent — AI Agent tự sinh kỹ năng
+# Javis OS — Legacy Skill Agent + AI Software Company MVP
+
+Repository này chứa hai runtime cùng tồn tại:
+
+- **Legacy Skill Agent**: CLI/chat, dashboard/voice, skill registry, sinh/tái sử dụng skill, self-fill, pipeline và JSONL memory hiện có.
+- **AI Software Company**: Goal → Work Order → task DAG → role/worker agents → review/approval → versioned artifacts → audit/trace/KPI.
+
+Mặc định nâng cấp là an toàn: legacy bật, organization tắt, execution `dry_run`, không cho phép `legacy_unsafe`. Demo và test chạy hoàn toàn offline bằng mock, không cần API key, Docker, network hay cài package trên host.
+
+## Quick start MVP
+
+Yêu cầu: Python 3.11+; không cần cài dependency cho demo offline.
+
+```powershell
+Copy-Item config.example.json config.json
+python company_cli.py validate-release
+python demo\run_demo.py
+python company_cli.py run-evals
+python -m unittest discover -s tests -v
+```
+
+Kết quả demo nằm trong `demo/output/`, gồm product spec, architecture/ADR, hai revision patch, code review, QA, security/release, final report và `demo-summary.json` chứa DAG, approval mô phỏng, audit hash-chain, trace, cost và số đo hiệu năng.
+
+## Kiến trúc AI Software Company
+
+```mermaid
+flowchart LR
+    U["CLI / Dashboard"] --> A["Application services"]
+    A --> G["Goal / Work Order / Task DAG"]
+    G --> R["Role + ephemeral worker runtime"]
+    R --> P["Policy / permission / budget / approval"]
+    P --> X["Dry-run / fake sandbox / adapters"]
+    R --> K["Artifacts + governed memory"]
+    G --> O["Events / audit / trace / KPI / evals"]
+    L["Legacy Skill Agent"] --> C["Compatibility adapters"]
+    C --> G
+```
+
+UI chỉ gọi application read models/commands. State transition đi qua state machines; policy và budget được kiểm tra trước dispatch; approval bind exact action hash; artifacts giữ hash/provenance; memory retrieval lọc scope/owner/sensitivity; legacy adapter không bypass governance runtime.
+
+## Chế độ chạy và lệnh
+
+- Legacy interactive/one-shot: `python agent.py` hoặc `python agent.py "tác vụ"`.
+- Organization offline: `python company_cli.py offline-demo`.
+- Dashboard: `python server.py` rồi mở `http://127.0.0.1:8765`.
+- Xem toàn bộ lệnh: `python company_cli.py --help`.
+- Hướng dẫn đầy đủ: [quickstart](docs/quickstart-ai-software-company.md), [operations runbook](docs/operations/runbook.md).
+
+Execution modes:
+
+- `mock`: deterministic provider/test adapter.
+- `dry_run`: mặc định; không thực thi host action.
+- `sandbox`: yêu cầu sandbox adapter thực sự của deployment.
+- `legacy_unsafe`: tương thích development, có thể sửa host; chỉ bật bằng cấu hình/biến môi trường rõ ràng. `RestrictedSubprocessExecutor` **không phải security sandbox**.
+
+## Trạng thái production
+
+Implemented: domain/state machines, policies/permissions/budgets/approval binding, role workflow, SQLite ports, versioned artifacts, layered memory, audit/trace/KPI/evals, dashboard read models, offline demo và migration dry-run/backup.
+
+Simulated/development-only: model work trong demo, production delivery, human approval demo, local hash-chain anchoring, file-backed dashboard projection và subprocess restriction. Chưa production-ready: strong sandbox isolation, tenant authentication/authorization, durable telemetry/audit anchoring, HA database/queues, secret manager integration, deployment adapters, retention/DR validation và compliance evidence. Không có tuyên bố chứng nhận compliance. Xem [production readiness](docs/security/production-readiness.md).
+
+Roadmap sau MVP: production sandbox adapter, tenant/RBAC, durable event store and OpenTelemetry export, external audit anchoring, queue workers, restore drills, deployment-specific SLOs và provider integration tests.
+
+---
+
+# Tài liệu Legacy Skill Agent
 
 Tên hiển thị và từ khóa đánh thức của Agent được cấu hình tập trung trong
 `agent.config.json`. Đổi `name` tại đây sẽ cập nhật giao diện, tiêu đề trình
@@ -86,7 +151,7 @@ Mở `config.json`, chọn `provider` và dán API key vào provider tương ứ
 Hỗ trợ 4 provider: **anthropic, gemini, openai, deepseek**. Chỉ cần điền key cho
 provider bạn dùng. Nếu để `api_key` trống, agent sẽ tự đọc từ biến môi trường
 (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`).
-SDK tương ứng được tự cài khi cần.
+Trong chế độ an toàn, SDK không được tự cài. Cài dependency đã review thủ công; cơ chế tự cài cũ chỉ hoạt động khi operator chủ động bật `legacy_unsafe` và không dùng trong production.
 
 ## Chạy
 
@@ -237,12 +302,12 @@ Phân biệt "lỗi code" và "lỗi dữ liệu" dựa vào cờ `_crashed` do 
 Khi một skill chạy **thất bại**, Agent không bỏ cuộc ngay mà tự khắc phục (`_recover`, tối đa `MAX_RECOVER` vòng):
 
 1. **Thiếu thư viện Python** (skill trả `"pip install X"` hoặc `No module named 'X'`) → tự chạy `pip install X --break-system-packages` rồi thử lại. Cài được nhiều gói nối tiếp, mỗi gói thử một lần.
-2. **Thiếu công cụ hệ thống** (vd `ffmpeg`, `ffprobe`, `tesseract`, `yt-dlp`...) → tự cài qua trình quản lý gói của HĐH: `winget`/`choco` (Windows), `brew` (macOS), `apt-get` (Linux) rồi thử lại.
+2. **Thiếu công cụ hệ thống** → chế độ an toàn chặn và báo rõ. Luồng tự cài qua package manager chỉ còn để tương thích khi operator chủ động bật `legacy_unsafe`; không dùng trong production.
 3. **Đọc lại yêu cầu tham số** — `_param_schema` lấy schema, chuẩn hoá cả skill kiểu cũ (dùng `parameters` thay `params`).
 4. **Tự điền tham số** (`_self_fill`): đặt tên mặc định cho tham số đầu ra; **quét thư mục làm việc** tìm tệp khớp loại (video/audio/ảnh); nhờ **LLM suy luận** từ yêu cầu + danh sách tệp + lỗi trước.
 5. **Hỏi lại người dùng** nếu vẫn thiếu tham số **bắt buộc**: trả `needs_input` + `ask`; dashboard hiện câu hỏi và đọc to để bạn bổ sung.
 
-Ví dụ "tạo biên bản cuộc họp từ video" mà quên đính kèm đường dẫn: nếu trong thư mục có đúng một tệp video, Agent tự dùng; thiếu `ffmpeg` thì tự cài; nếu vẫn bí thì hỏi lại đúng thứ còn thiếu.
+Ví dụ "tạo biên bản cuộc họp từ video" mà quên đính kèm đường dẫn: nếu trong thư mục có đúng một tệp video, Agent tự dùng; nếu thiếu `ffmpeg` trong chế độ an toàn thì dừng và yêu cầu operator xử lý; nếu vẫn thiếu input thì hỏi lại đúng thứ còn thiếu.
 
 ## Tác vụ đa bước (pipeline)
 

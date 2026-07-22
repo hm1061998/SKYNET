@@ -50,6 +50,7 @@ dist/
 .cache/
 tmp/
 temp/
+demo/output/
 
 # Editors and operating systems
 .idea/

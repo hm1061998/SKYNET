@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "fast_classifier": {"provider": "mock", "model": "mock-1", "role": "chat", "max_tokens": 512},
+    "balanced_reasoning": {"provider": "mock", "model": "mock-1", "role": "work", "max_tokens": 4000},
+    "deep_reasoning": {"provider": "mock", "model": "mock-1", "role": "work", "max_tokens": 6000},
+    "code_reasoning": {"provider": "mock", "model": "mock-1", "role": "work", "max_tokens": 6000}
+  }
+}

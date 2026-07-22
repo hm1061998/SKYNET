@@ -112,6 +112,11 @@ class InMemoryArtifactStore:
             raise ArtifactStoreError("artifact immutable hash validation failed")
         return bytes(data)
 
+    def list_versions(self) -> tuple[ArtifactVersionRecord, ...]:
+        """Return immutable metadata ordered by artifact ID and version."""
+        return tuple(record for artifact_id in sorted(self._versions)
+                     for record in self._versions[artifact_id])
+
 
 class LocalFileArtifactStore(InMemoryArtifactStore):
     """Atomic local store using generated ID paths, never model-provided names."""

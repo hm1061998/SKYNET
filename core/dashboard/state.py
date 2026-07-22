@@ -179,5 +179,11 @@ class DashboardState:
 
     @staticmethod
     def _source_task(path: str) -> str:
-        return "task-" + ("qa" if "quality/" in path else "implementation" if "implementation/" in path else
-                          "technical_design" if "architecture/" in path else "product_specification")
+        stage = ("qa" if path.startswith("quality/") else
+                 "implementation" if path.startswith("implementation/") else
+                 "technical_design" if path.startswith("architecture/") else
+                 "code_review" if path.startswith("review/") else
+                 "security_release_review" if path.startswith(("security/", "release/")) else
+                 "final_approval_delivery" if path.startswith("delivery/") else
+                 "product_specification")
+        return "task-" + stage
