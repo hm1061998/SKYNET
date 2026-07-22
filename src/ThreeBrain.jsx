@@ -99,31 +99,31 @@ function makeLabel(stage, text, kind = 'skill') {
 }
 
 function createSatelliteNode(color, index) {
-  const geometries = [
-    () => new THREE.OctahedronGeometry(.095, 0),
-    () => new THREE.BoxGeometry(.125, .125, .125),
-    () => new THREE.TetrahedronGeometry(.11, 0),
-    () => new THREE.DodecahedronGeometry(.082, 0),
-    () => new THREE.CylinderGeometry(.073, .073, .13, 6)
-  ];
-  const geometry = geometries[index % geometries.length]();
-  const material = new THREE.MeshStandardMaterial({
+  // Skill nodes are deliberately rendered as luminous points rather than solids.
+  const geometry = new THREE.SphereGeometry(.052, 18, 12);
+  const material = new THREE.MeshBasicMaterial({
     color,
-    emissive: index % 2 ? 0x164b68 : 0x165b4a,
-    emissiveIntensity: 1.5,
-    roughness: .3,
-    metalness: .18,
-    flatShading: true,
     transparent: true,
-    opacity: .92
+    opacity: 1,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
   });
   const node = new THREE.Mesh(geometry, material);
-  node.rotation.set(index * .37, index * .61, index * .19);
-  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xc8fff4, transparent: true, opacity: .42, blending: THREE.AdditiveBlending });
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 18), edgeMaterial);
-  edges.scale.setScalar(1.035);
-  node.add(edges);
-  node.userData.satellite = { edgeMaterial };
+  const haloMaterials = [];
+  [[.12, .16], [.22, .045]].forEach(([radius, opacity]) => {
+    const haloMaterial = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.BackSide
+    });
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(radius, 18, 12), haloMaterial);
+    node.add(halo);
+    haloMaterials.push(haloMaterial);
+  });
+  node.userData.satellite = { haloMaterials };
   return node;
 }
 
@@ -543,12 +543,10 @@ export default function ThreeBrain() {
         const activityPulse = isCurrent ? .55 + Math.max(0, Math.sin(time * 7)) * .45 : item.activity * .22;
         moveOnOrbit(item, time, isCurrent ? 1 : item.activity);
         item.mesh.scale.setScalar(1 + Math.sin(time * 2.2 + item.phase) * 0.18 + activityPulse);
-        item.mesh.material.emissiveIntensity = isCurrent ? 5 : 1.5 + item.activity * 1.5;
-        item.mesh.rotation.x += .0025 + item.activity * .004;
-        item.mesh.rotation.y += .0035 + item.activity * .006;
         const satellite = item.mesh.userData.satellite;
         if (satellite) {
-          satellite.edgeMaterial.opacity = isCurrent ? .9 : .3 + item.activity * .3;
+          satellite.haloMaterials[0].opacity = isCurrent ? .42 : .16 + item.activity * .12;
+          satellite.haloMaterials[1].opacity = isCurrent ? .16 : .045 + item.activity * .05;
         }
         item.orbitLine.material.opacity = isCurrent ? .48 : .06 + item.activity * .14;
         if (!isCurrent) item.activity *= .992;
