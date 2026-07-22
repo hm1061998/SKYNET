@@ -87,7 +87,12 @@ class AgentRuntime:
         last_error = "malformed structured result"
         for attempt in range(self.max_repairs + 1):
             purpose = "agent_execute" if attempt == 0 else "agent_result_repair"
-            raw = self.provider.complete(messages, profile, purpose)
+            try:
+                raw = self.provider.complete(messages, profile, purpose)
+            except (TimeoutError, ConnectionError, OSError) as exc:
+                last_error = f"provider failure: {type(exc).__name__}"
+                failed = self.lifecycle.transition(instance, AgentStatus.FAILED, actor_id, last_error)
+                return RuntimeOutcome(failed, None, last_error)
             try:
                 result = AgentExecutionResult.from_dict(extract_json(raw))
                 target = {

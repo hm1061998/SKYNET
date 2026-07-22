@@ -135,6 +135,14 @@ class LocalFileArtifactStore(InMemoryArtifactStore):
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, target)
+        except Exception:
+            versions = self._versions.get(record.artifact_id, [])
+            if versions and versions[-1].id == record.id:
+                versions.pop()
+            if not versions:
+                self._versions.pop(record.artifact_id, None)
+            self._data.pop(record.id, None)
+            raise
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)

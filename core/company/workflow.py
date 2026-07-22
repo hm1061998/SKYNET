@@ -62,7 +62,8 @@ class MockFeatureDeliveryWorkflow:
         self.artifacts = artifacts or InMemoryArtifactStore(self.clock, self.ids)
         self.event_sink = event_sink or (lambda event: None)
 
-    def run_health_check(self, *, human_approved: bool = True) -> FeatureDeliveryResult:
+    def run_health_check(self, *, human_approved: bool = True,
+                         qa_fail_once: bool = False) -> FeatureDeliveryResult:
         statuses: dict[str, str] = {}
         versions: dict[str, str] = {}
         trace = []
@@ -122,6 +123,13 @@ class MockFeatureDeliveryWorkflow:
                  f"Approved exact patch {revised_hash} after required exit-code test was added.", "review_report")
         complete("code_review")
         artifact("quality/test-plan.md", "qa_engineer", "Test output, exit code and regression behavior.", "test_report")
+        if qa_fail_once:
+            trace.append("qa:failed:repair_requested")
+            self.event_sink({"type": "execution.failed", "stage": "qa", "recoverable": True,
+                             "summary": "QA detected a recoverable regression"})
+            revised_hash = artifact("implementation/health-check-qa-repair.patch", "developer",
+                                    "repair: restore deterministic exit code and regression behavior", "source_patch")
+            trace.append("qa:repair_completed")
         artifact("quality/test-report.md", "qa_engineer", f"PASS exact candidate {revised_hash}.", "test_report")
         complete("qa")
         artifact("security/release-risk-report.md", "security_release_officer",

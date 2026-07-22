@@ -1,0 +1,1 @@
+{"roles":[{"id":"developer","capabilities":["read_repository","write_patch"]},{"id":"code_reviewer","capabilities":["read_repository","approve_code"]},{"id":"qa_engineer","capabilities":["run_tests"]}]}

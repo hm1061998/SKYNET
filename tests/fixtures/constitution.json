@@ -1,0 +1,1 @@
+{"version":"fixture-v1","principles":["deny-by-default","human-approval-for-risk"],"policies":[{"action":"read_repository","effect":"allow"},{"action":"deploy_production","effect":"require_human_approval"}]}

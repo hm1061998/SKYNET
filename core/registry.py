@@ -136,7 +136,10 @@ class Registry:
             # thiếu thư viện ở import-time -> tự cài rồi nạp lại (1 lần)
             pkg = autoinstall.missing_package(str(e))
             if _retry and pkg:
-                print(f"[registry] {path.name} thiếu '{pkg}' → tự cài...")
+                try:
+                    print(f"[registry] {path.name} missing {ascii(pkg)}; attempting configured recovery")
+                except (OSError, UnicodeError):
+                    pass
                 if autoinstall.pip_install(pkg, log=print):
                     return self._load_file(path, _retry=False)
             self.load_errors[path.name] = str(e)

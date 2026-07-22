@@ -67,6 +67,12 @@ class Config:
             raise ValueError(f"unknown execution mode: {mode}")
         return mode
 
+    @property
+    def feature_flags(self) -> "RuntimeFeatureFlags":
+        """Return centralized migration flags while preserving legacy config keys."""
+        from core.compatibility import RuntimeFeatureFlags
+        return RuntimeFeatureFlags.from_config(self.data)
+
     # ---- nạp ----
     @classmethod
     def load(cls, path=CONFIG_PATH) -> "Config":

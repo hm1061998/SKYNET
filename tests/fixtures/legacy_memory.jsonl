@@ -1,0 +1,2 @@
+{"id":"legacy-1","text":"Prefer deterministic offline tests","kind":"preference","tags":["testing"]}
+{"id":"legacy-2","text":"Use mock provider by default","kind":"fact","tags":["provider"]}
