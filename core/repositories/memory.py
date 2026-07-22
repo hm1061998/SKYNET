@@ -70,6 +70,7 @@ class InMemoryRepository(Generic[T]):
 REPOSITORY_NAMES = (
     "organizations", "agent_definitions", "agent_instances", "goals", "work_orders",
     "tasks", "artifacts", "approvals", "audit_events", "budgets",
+    "collaboration_messages", "context_packages", "review_records",
 )
 
 
