@@ -24,6 +24,8 @@ Active-role contrast is now intentionally asymmetric: the active agent uses full
 
 Runtime skill projection now uses eight stable hidden mesh slots and a stable preallocated agent-to-skill edge matrix. Log updates mutate slot visibility, canvas label textures and edge activity in place; skill discovery and active-role transitions therefore no longer change the Three.js structure signature or recreate the scene.
 
+Motion no longer derives positions from absolute elapsed time multiplied by the current activity energy. A clamped delta-time integrator advances a continuous motion clock, while activity energy eases toward its target. Chat transitions such as thinking-to-working can change animation speed and color without discontinuously relocating every orbiting node or neural signal.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.
