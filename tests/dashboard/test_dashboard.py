@@ -91,6 +91,10 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("3D rendering is unavailable", graph)
         self.assertIn("viewStateRef", graph)
         self.assertIn("topologySignature", graph)
+        self.assertIn("brainPoint", graph)
+        self.assertIn("Collective mind online", graph)
+        self.assertIn("Debug links", graph)
+        self.assertIn("signalCurves", graph)
 
     def test_server_keeps_legacy_and_v1_routes(self):
         server = (ROOT / "server.py").read_text(encoding="utf-8")

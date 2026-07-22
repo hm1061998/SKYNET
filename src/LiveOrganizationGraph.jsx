@@ -5,14 +5,32 @@ const KIND_ORDER = ['work_order', 'agent', 'task', 'artifact', 'approval'];
 const KIND_LABELS = { work_order: 'Work order', agent: 'AI entities', task: 'Tasks', artifact: 'Artifacts', approval: 'Human gates' };
 const COLORS = { work_order: 0x4fe3ff, agent: 0x50f6c8, task: 0x8a70ff, artifact: 0x4fa4d8, approval: 0xffbd59 };
 
-function layout(nodes) {
-  const x = { work_order: -4.2, agent: -2.2, task: 0, artifact: 2.4, approval: 4.35 };
-  return nodes.map((node) => {
-    const peers = nodes.filter((item) => item.kind === node.kind);
-    const index = peers.findIndex((item) => item.id === node.id);
-    const y = peers.length === 1 ? 0 : 2.8 - (5.6 * index) / (peers.length - 1);
-    return { ...node, position: new THREE.Vector3(x[node.kind] || 0, y, Math.sin(index * 1.7) * .55) };
+function brainPoint(index, count) {
+  const side = index % 2 ? 1 : -1;
+  const i = Math.floor(index / 2); const n = Math.max(1, Math.ceil(count / 2));
+  const phi = Math.acos(1 - (2 * (i + .5)) / n); const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+  return new THREE.Vector3(side * (.72 + Math.abs(Math.sin(phi) * Math.cos(theta)) * 1.35), Math.cos(phi) * 1.55, Math.sin(phi) * Math.sin(theta) * 1.2);
+}
+
+function layout(nodes, edges) {
+  const positions = new Map();
+  const agents = nodes.filter((node) => node.kind === 'agent');
+  agents.forEach((node, index) => positions.set(node.id, brainPoint(index, agents.length)));
+  nodes.filter((node) => node.kind === 'work_order').forEach((node) => positions.set(node.id, new THREE.Vector3(0, 0, 0)));
+  const assignedAgent = new Map(edges.filter((edge) => edge.kind === 'assigned_to').map((edge) => [edge.target, edge.source]));
+  const tasks = nodes.filter((node) => node.kind === 'task');
+  tasks.forEach((node, index) => {
+    const anchor = positions.get(assignedAgent.get(node.id)) || brainPoint(index, tasks.length).multiplyScalar(.65);
+    positions.set(node.id, anchor.clone().multiplyScalar(1.38).add(new THREE.Vector3(0, .12, .18)));
   });
+  const sourceTask = new Map(edges.filter((edge) => edge.kind === 'produces').map((edge) => [edge.target, edge.source]));
+  const artifacts = nodes.filter((node) => node.kind === 'artifact');
+  artifacts.forEach((node, index) => {
+    const anchor = positions.get(sourceTask.get(node.id)); const angle = (index / Math.max(artifacts.length, 1)) * Math.PI * 2;
+    positions.set(node.id, anchor ? anchor.clone().multiplyScalar(1.34) : new THREE.Vector3(Math.cos(angle) * 3.5, Math.sin(angle) * 2.2, Math.sin(angle * 2) * .7));
+  });
+  nodes.filter((node) => node.kind === 'approval').forEach((node, index) => positions.set(node.id, new THREE.Vector3(0, 2.75 + index * .35, .25)));
+  return nodes.map((node) => ({ ...node, position: positions.get(node.id) || new THREE.Vector3() }));
 }
 
 function labelSprite(text, color) {
@@ -38,7 +56,7 @@ function dispose(root) {
   });
 }
 
-function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
+function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks }) {
   const hostRef = useRef(null);
   const runtimeRef = useRef(null);
   const viewStateRef = useRef({ rotationX: -.08, rotationY: 0, zoom: 12.5 });
@@ -70,6 +88,26 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
     scene.add(new THREE.AmbientLight(0x79bfff, .7));
     const key = new THREE.PointLight(0x50f6c8, 18, 25); key.position.set(0, 1, 5); scene.add(key);
 
+    const brainShell = new THREE.Group();
+    [-1, 1].forEach((side) => {
+      const lobe = new THREE.Mesh(new THREE.SphereGeometry(1.72, 28, 20), new THREE.MeshBasicMaterial({ color: side < 0 ? 0x4fe3ff : 0x806cff, wireframe: true, transparent: true, opacity: .035 }));
+      lobe.scale.set(.72, 1, .82); lobe.position.x = side * .72; brainShell.add(lobe);
+    });
+    graph.add(brainShell);
+
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(.34, 3), new THREE.MeshBasicMaterial({ color: 0x50f6c8, wireframe: true, transparent: true, opacity: .72 }));
+    const coreAura = new THREE.Mesh(new THREE.SphereGeometry(.58, 24, 16), new THREE.MeshBasicMaterial({ color: 0x4fe3ff, transparent: true, opacity: .075, side: THREE.BackSide, blending: THREE.AdditiveBlending }));
+    graph.add(core, coreAura);
+
+    const fiberPoints = [];
+    for (let index = 0; index < 150; index += 1) {
+      const from = brainPoint(index, 150); const to = brainPoint((index + 11 + index % 9) % 150, 150);
+      if (Math.sign(from.x) !== Math.sign(to.x)) to.x *= -1;
+      fiberPoints.push(from.x, from.y, from.z, to.x, to.y, to.z);
+    }
+    const fiberGeometry = new THREE.BufferGeometry(); fiberGeometry.setAttribute('position', new THREE.Float32BufferAttribute(fiberPoints, 3));
+    graph.add(new THREE.LineSegments(fiberGeometry, new THREE.LineBasicMaterial({ color: 0x247c93, transparent: true, opacity: .14, blending: THREE.AdditiveBlending })));
+
     const starsGeometry = new THREE.BufferGeometry();
     const stars = new Float32Array(900);
     for (let index = 0; index < stars.length; index += 3) {
@@ -82,7 +120,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
     nodes.forEach((node, index) => {
       const color = COLORS[node.kind] || 0x4fe3ff;
       const group = new THREE.Group(); group.position.copy(node.position); group.userData.nodeId = node.id;
-      const radius = node.kind === 'work_order' ? .19 : node.kind === 'agent' ? .14 : .11;
+      const radius = node.kind === 'work_order' ? .25 : node.kind === 'agent' ? .14 : .09;
       const core = new THREE.Mesh(new THREE.IcosahedronGeometry(radius, 2), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: node.status === 'waiting_approval' || node.status === 'pending' ? 3.8 : 2.1, roughness: .2 }));
       core.userData.nodeId = node.id; group.add(core);
       const halo = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.3, 18, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
@@ -91,22 +129,32 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
         const ring = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.9, .012, 6, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .55 }));
         ring.rotation.x = Math.PI / 2; group.add(ring);
       }
+      if (node.subkind === 'worker') {
+        core.material.color.setHex(0xff9650); core.material.emissive.setHex(0xff9650);
+        group.userData.worker = true;
+      }
       group.userData.phase = index * .73; group.userData.core = core; group.userData.halo = halo;
       nodeMeshes.set(node.id, group); graph.add(group);
     });
 
-    const edgeLines = [];
+    const edgeLines = []; const signalCurves = [];
     edges.forEach((edge) => {
       const source = nodeMeshes.get(edge.source); const target = nodeMeshes.get(edge.target);
       if (!source || !target) return;
       const middle = source.position.clone().lerp(target.position, .5); middle.z += .35;
       const curve = new THREE.QuadraticBezierCurve3(source.position, middle, target.position);
+      if (edge.kind !== 'reports_to') signalCurves.push(curve);
       const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(30));
       const color = edge.kind === 'gated_by' ? 0xffbd59 : edge.kind === 'reports_to' ? 0x876dba : 0x285c72;
-      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: .34 }));
+      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: debugLinks ? .28 : 0 }));
       line.userData.edge = edge; line.userData.baseColor = color;
       edgeLines.push(line); graph.add(line);
     });
+    const signalCount = Math.min(42, Math.max(12, signalCurves.length * 2));
+    const signalGeometry = new THREE.BufferGeometry();
+    signalGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(signalCount * 3), 3));
+    const signals = new THREE.Points(signalGeometry, new THREE.PointsMaterial({ color: 0x9ffff0, size: .055, transparent: true, opacity: .82, blending: THREE.AdditiveBlending, depthWrite: false }));
+    graph.add(signals);
     runtimeRef.current = { nodeMeshes, edgeLines };
 
     let dragging = false; let dragDistance = 0; let px = 0; let py = 0; let targetZoom = viewStateRef.current.zoom;
@@ -120,10 +168,10 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
     const observer = new ResizeObserver(resize); observer.observe(host); resize();
 
     let animationId; const started = performance.now();
-    const animate = (now) => { animationId = requestAnimationFrame(animate); const time = (now - started) / 1000; camera.position.z += (targetZoom - camera.position.z) * .1; if (!dragging) graph.rotation.y += .0008; nodeMeshes.forEach((item) => { const pulse = .5 + Math.sin(time * 2.2 + item.userData.phase) * .5; item.userData.core.rotation.x += .006; item.userData.core.rotation.y += .01; item.userData.halo.scale.setScalar(1 + pulse * .16); }); renderer.render(scene, camera); };
+    const animate = (now) => { animationId = requestAnimationFrame(animate); const time = (now - started) / 1000; camera.position.z += (targetZoom - camera.position.z) * .1; if (!dragging) graph.rotation.y += .0008; core.rotation.x = time * .18; core.rotation.y = time * .28; core.scale.setScalar(1 + Math.sin(time * 2.4) * .07); coreAura.scale.setScalar(1 + Math.sin(time * 1.6) * .1); brainShell.rotation.y = Math.sin(time * .22) * .035; const signalPositions = signalGeometry.attributes.position; for (let index = 0; index < signalCount; index += 1) { const curve = signalCurves[index % Math.max(signalCurves.length, 1)]; const point = curve ? curve.getPoint((time * (.09 + index % 4 * .015) + index / signalCount) % 1) : new THREE.Vector3(); signalPositions.setXYZ(index, point.x, point.y, point.z); } signalPositions.needsUpdate = true; nodeMeshes.forEach((item) => { const pulse = .5 + Math.sin(time * 2.2 + item.userData.phase) * .5; item.userData.core.rotation.x += .006; item.userData.core.rotation.y += .01; item.userData.halo.scale.setScalar(1 + pulse * (item.userData.worker ? .28 : .16)); }); renderer.render(scene, camera); };
     animationId = requestAnimationFrame(animate);
     return () => { viewStateRef.current = { rotationX: graph.rotation.x, rotationY: graph.rotation.y, zoom: targetZoom }; runtimeRef.current = null; cancelAnimationFrame(animationId); observer.disconnect(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('wheel', wheel); dispose(graph); renderer.dispose(); renderer.domElement.remove(); };
-  }, [nodes, edges, onSelect]);
+  }, [nodes, edges, onSelect, debugLinks]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -137,9 +185,9 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
       const edge = line.userData.edge;
       const active = edge.source === selectedId || edge.target === selectedId;
       line.material.color.setHex(active ? 0xdffcff : line.userData.baseColor);
-      line.material.opacity = active ? .92 : .34;
+      line.material.opacity = active ? .92 : debugLinks ? .28 : 0;
     });
-  }, [selectedId, nodes, edges]);
+  }, [selectedId, nodes, edges, debugLinks]);
 
   return <div ref={hostRef} className="organization-3d-stage" aria-label="Interactive 3D graph of the live AI organization" />;
 }
@@ -147,16 +195,17 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
 export default function LiveOrganizationGraph({ topology, onOpenTask }) {
   const [selectedId, setSelectedId] = useState(topology.nodes[0]?.id || '');
   const [visibleKinds, setVisibleKinds] = useState(new Set(KIND_ORDER));
+  const [debugLinks, setDebugLinks] = useState(false);
   const topologySignature = JSON.stringify({ nodes: topology.nodes, edges: topology.edges });
-  const positioned = useMemo(() => layout(topology.nodes.filter((node) => visibleKinds.has(node.kind))), [topologySignature, visibleKinds]);
+  const positioned = useMemo(() => layout(topology.nodes.filter((node) => visibleKinds.has(node.kind)), topology.edges), [topologySignature, visibleKinds]);
   const ids = new Set(positioned.map((node) => node.id));
   const edges = useMemo(() => topology.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)), [topologySignature, positioned]);
   const selected = topology.nodes.find((node) => node.id === selectedId);
   const toggleKind = (kind) => setVisibleKinds((current) => { const next = new Set(current); if (next.has(kind) && next.size > 1) next.delete(kind); else next.add(kind); return next; });
 
   return <div className="live-graph-shell">
-    <div className="graph-toolbar" aria-label="Graph filters">{KIND_ORDER.map((kind) => <button key={kind} className={visibleKinds.has(kind) ? `kind-${kind} active` : ''} aria-pressed={visibleKinds.has(kind)} onClick={() => toggleKind(kind)}>{KIND_LABELS[kind]}</button>)}<span className="live-indicator"><i /> Live · refresh 5s</span></div>
-    <div className="live-graph-workspace"><ThreeOrganizationGraph nodes={positioned} edges={edges} selectedId={selectedId} onSelect={setSelectedId}/><aside className="graph-inspector" aria-live="polite">{selected ? <><span className={`entity-kind kind-${selected.kind}`}>{KIND_LABELS[selected.kind]}</span><h3>{selected.label}</h3><span className={`ops-status status-${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><p>{selected.detail || 'No operational detail.'}</p><dl><dt>ID</dt><dd><code>{selected.id}</code></dd>{selected.current_task && <><dt>Current task</dt><dd>{selected.current_task}</dd></>}{selected.risk && <><dt>Risk</dt><dd>{selected.risk}</dd></>}</dl>{selected.kind === 'task' && <button onClick={() => onOpenTask(selected.id)}>Open task details</button>}</> : <p>Select an entity to inspect it.</p>}<div className="accessible-entities"><strong>Keyboard entity list</strong>{positioned.map((node) => <button key={node.id} className={node.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(node.id)}>{node.label}</button>)}</div></aside></div>
-    <div className="graph-relationship-legend"><span>Drag: rotate</span><span>Wheel: zoom</span><span>Click node: inspect</span><span>Amber: approval gate</span><time>Snapshot {new Date(topology.generated_at).toLocaleTimeString()}</time></div>
+    <div className="graph-toolbar" aria-label="Graph filters">{KIND_ORDER.map((kind) => <button key={kind} className={visibleKinds.has(kind) ? `kind-${kind} active` : ''} aria-pressed={visibleKinds.has(kind)} onClick={() => toggleKind(kind)}>{KIND_LABELS[kind]}</button>)}<button className={debugLinks ? 'active' : ''} aria-pressed={debugLinks} onClick={() => setDebugLinks((value) => !value)}>Debug links</button><span className="live-indicator"><i /> Collective mind online</span></div>
+    <div className="live-graph-workspace"><ThreeOrganizationGraph nodes={positioned} edges={edges} selectedId={selectedId} onSelect={setSelectedId} debugLinks={debugLinks}/><aside className="graph-inspector" aria-live="polite">{selected ? <><span className={`entity-kind kind-${selected.kind}`}>{KIND_LABELS[selected.kind]}</span><h3>{selected.label}</h3><span className={`ops-status status-${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><p>{selected.detail || 'No operational detail.'}</p><dl><dt>ID</dt><dd><code>{selected.id}</code></dd>{selected.current_task && <><dt>Current task</dt><dd>{selected.current_task}</dd></>}{selected.risk && <><dt>Risk</dt><dd>{selected.risk}</dd></>}</dl>{selected.kind === 'task' && <button onClick={() => onOpenTask(selected.id)}>Open task details</button>}</> : <p>Select an entity to inspect it.</p>}<div className="accessible-entities"><strong>Keyboard entity list</strong>{positioned.map((node) => <button key={node.id} className={node.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(node.id)}>{node.label}</button>)}</div></aside></div>
+    <div className="graph-relationship-legend"><span>Neural core: company mind</span><span>Green: agents</span><span>Orange: temporary workers</span><span>Amber: approval junction</span><time>Snapshot {new Date(topology.generated_at).toLocaleTimeString()}</time></div>
   </div>;
 }
