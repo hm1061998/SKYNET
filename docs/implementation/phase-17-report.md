@@ -18,6 +18,8 @@ Runtime skills observed in bounded execution logs are projected as pink skill no
 
 Graph view state is continuously synchronized during pointer and wheel interaction and persisted in session storage, so structural updates and full React remounts restore the operator's rotation and zoom. Autonomous graph/node motion pauses for 12 seconds after direct manipulation to prevent post-interaction drift from appearing as a camera reset.
 
+The React render boundary now isolates the live graph from transcript-only controller updates. Both the graph shell and Three.js host are memoized; a semantic comparator admits only topology, activity, active-role, workflow, skill-set or task callback changes, and the task callback is stable through `useCallback`. Streaming chat logs that do not change those inputs no longer execute graph render work.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.
