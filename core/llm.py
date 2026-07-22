@@ -78,7 +78,7 @@ class LLM:
                 f"hoặc đặt provider='mock' để chạy thử offline."
             )
         try:
-            if cfg.provider in ("openai", "deepseek", "local"):
+            if cfg.provider in ("openai", "deepseek", "9router", "local"):
                 return self._openai(cfg, messages, temperature, max_tokens)
             if cfg.provider == "anthropic":
                 return self._anthropic(cfg, messages, temperature, max_tokens)

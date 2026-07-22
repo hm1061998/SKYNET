@@ -20,12 +20,14 @@ DEFAULT_MODELS = {
     "gemini": "gemini-2.0-flash",
     "openai": "gpt-4o-mini",
     "deepseek": "deepseek-chat",
-    "local": "deepseek-r1",
+    "9router": "SKYNET",
+    "local": "qwen3:4b",
     "mock": "mock-1",
 }
 
 DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com",
+    "9router": "http://127.0.0.1:20128/v1",
 }
 
 
@@ -44,7 +46,7 @@ class RoleConfig:
 
     @property
     def is_local(self) -> bool:
-        return self.provider == "local"
+        return self.provider in ("local", "9router")
 
     @property
     def ready(self) -> bool:

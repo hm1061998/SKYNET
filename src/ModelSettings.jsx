@@ -47,7 +47,7 @@ export default function ModelSettings() {
         ...(field === "provider"
           ? {
               model: catalog[value]?.[0] || "",
-              base_url: value === "local" ? "http://127.0.0.1:11434/v1" : "",
+              base_url: value === "local" ? "http://127.0.0.1:11434/v1" : value === "9router" ? "http://127.0.0.1:20128/v1" : "",
             }
           : {}),
       },
@@ -163,7 +163,7 @@ export default function ModelSettings() {
                     ))}
                   </datalist>
                 </label>
-                {roles[role]?.provider === "local" && (
+                {["local", "9router"].includes(roles[role]?.provider) && (
                   <label>
                     Local endpoint
                     <input
@@ -171,7 +171,7 @@ export default function ModelSettings() {
                       onChange={(event) =>
                         updateRole(role, "base_url", event.target.value)
                       }
-                      placeholder="http://127.0.0.1:11434/v1"
+                      placeholder={roles[role]?.provider === "9router" ? "http://127.0.0.1:20128/v1" : "http://127.0.0.1:11434/v1"}
                       spellCheck="false"
                     />
                   </label>

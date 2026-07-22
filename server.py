@@ -53,7 +53,8 @@ MODEL_CATALOG = {
     "anthropic": ["claude-sonnet-4-5", "claude-haiku-4-5"],
     "gemini": ["gemini-2.0-flash", "gemini-2.5-pro"],
     "deepseek": ["deepseek-chat", "deepseek-reasoner"],
-    "local": ["deepseek-r1", "qwen2.5", "mistral", "gemma3"],
+    "9router": ["SKYNET"],
+    "local": ["qwen3:4b", "qwen3:4b", "mistral", "gemma3"],
     "mock": ["mock-1"],
 }
 
@@ -191,8 +192,9 @@ def save_model_config(roles: dict) -> dict:
         if not model or len(model) > 120 or any(ch in model for ch in "\r\n\0"):
             raise ValueError(f"Tên model cho {role} không hợp lệ")
         saved_role = {"provider": provider, "model": model}
-        if provider == "local":
-            base_url = str(value.get("base_url") or "http://127.0.0.1:11434/v1").strip().rstrip("/")
+        if provider in ("local", "9router"):
+            default_url = "http://127.0.0.1:20128/v1" if provider == "9router" else "http://127.0.0.1:11434/v1"
+            base_url = str(value.get("base_url") or default_url).strip().rstrip("/")
             if len(base_url) > 300 or not base_url.startswith(("http://", "https://")):
                 raise ValueError(f"Endpoint local cho {role} không hợp lệ")
             saved_role["base_url"] = base_url
