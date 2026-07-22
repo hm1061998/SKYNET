@@ -10,9 +10,17 @@ class AgentKind(str, Enum):
 
 class AgentStatus(str, Enum):
     DEFINED = "defined"
+    READY = "ready"
+    ASSIGNED = "assigned"
+    RUNNING = "running"
+    WAITING = "waiting"
+    COMPLETED = "completed"
+    TERMINATED = "terminated"
+    FAILED = "failed"
     IDLE = "idle"
     ACTIVE = "active"
     SUSPENDED = "suspended"
+    CANCELLED = "cancelled"
     RETIRED = "retired"
 
 

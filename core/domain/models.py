@@ -180,6 +180,15 @@ class AgentDefinition(Serializable):
     tool_grants: tuple[ToolGrant, ...] = ()
     model_profile: ModelProfile | None = None
     version: int = 1
+    mission: str = ""
+    department_id: str | None = None
+    reports_to: str | None = None
+    delegates_to: tuple[str, ...] = ()
+    model_profile_name: str | None = None
+    memory_scopes: tuple[str, ...] = ()
+    policies: tuple[str, ...] = ()
+    limits: dict[str, int | float] = field(default_factory=dict)
+    role_prompt: str = ""
 
     def __post_init__(self) -> None:
         require_id(self.id)
@@ -188,6 +197,14 @@ class AgentDefinition(Serializable):
         require_enum(self.kind, AgentKind, "agent_definition.kind")
         if self.version < 1:
             raise DomainValidationError("agent_definition.version must be positive")
+        if self.department_id is not None:
+            require_id(self.department_id, "agent_definition.department_id")
+        if self.reports_to is not None:
+            require_id(self.reports_to, "agent_definition.reports_to")
+            if self.reports_to == self.id:
+                raise DomainValidationError("agent definition cannot report to itself")
+        if any(value < 0 for value in self.limits.values()):
+            raise DomainValidationError("agent definition limits cannot be negative")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AgentDefinition":
@@ -198,7 +215,11 @@ class AgentDefinition(Serializable):
                                     utc_from_iso(item["expires_at"]) if item.get("expires_at") else None))
         return cls(data["id"], data["name"], AgentKind(data["kind"]), data["role_id"],
                    tuple(Capability(**item) for item in data.get("capabilities", ())), tuple(grants),
-                   ModelProfile(**profile) if profile else None, int(data.get("version", 1)))
+                   ModelProfile(**profile) if profile else None, int(data.get("version", 1)),
+                   data.get("mission", ""), data.get("department_id"), data.get("reports_to"),
+                   tuple(data.get("delegates_to", ())), data.get("model_profile_name"),
+                   tuple(data.get("memory_scopes", ())), tuple(data.get("policies", ())),
+                   dict(data.get("limits", {})), data.get("role_prompt", ""))
 
 
 @dataclass(frozen=True)
@@ -209,6 +230,12 @@ class AgentInstance(Serializable):
     created_at: datetime
     work_order_id: str | None = None
     version: int = 1
+    parent_definition_id: str | None = None
+    source_task_id: str | None = None
+    expires_at: datetime | None = None
+    context_id: str | None = None
+    budget_id: str | None = None
+    granted_capabilities: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         require_id(self.id)
@@ -219,11 +246,27 @@ class AgentInstance(Serializable):
             require_id(self.work_order_id, "agent_instance.work_order_id")
         if self.version < 1:
             raise DomainValidationError("agent_instance.version must be positive")
+        for field_name, value in (
+            ("parent_definition_id", self.parent_definition_id),
+            ("source_task_id", self.source_task_id),
+            ("context_id", self.context_id),
+            ("budget_id", self.budget_id),
+        ):
+            if value is not None:
+                require_id(value, f"agent_instance.{field_name}")
+        if self.expires_at is not None:
+            require_utc(self.expires_at, "agent_instance.expires_at")
+            if self.expires_at <= self.created_at:
+                raise DomainValidationError("agent instance expiry must be after creation")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AgentInstance":
         return cls(data["id"], data["definition_id"], AgentStatus(data["status"]),
-                   utc_from_iso(data["created_at"]), data.get("work_order_id"), int(data.get("version", 1)))
+                   utc_from_iso(data["created_at"]), data.get("work_order_id"), int(data.get("version", 1)),
+                   data.get("parent_definition_id"), data.get("source_task_id"),
+                   utc_from_iso(data["expires_at"]) if data.get("expires_at") else None,
+                   data.get("context_id"), data.get("budget_id"),
+                   tuple(data.get("granted_capabilities", ())))
 
 
 @dataclass(frozen=True)
