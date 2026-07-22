@@ -37,7 +37,7 @@ class DashboardState:
         return [{"id": self.template.template_id, "version": self.template.version,
                  "departments": self.template.departments,
                  "reporting_lines": self.template.reporting_lines,
-                 "feature_flags": {"enable_3d_graph": False}}]
+                 "feature_flags": {"enable_3d_graph": True}}]
 
     def work_orders(self) -> list[dict[str, Any]]:
         tasks = self.tasks("wo-health-check")
@@ -193,7 +193,7 @@ class DashboardState:
                 "model_profiles": self.template.model_profiles, "budgets": self.template.budgets,
                 "approval_rules": ["production_requires_human_approval"],
                 "workflow_templates": self.template.workflow_templates,
-                "feature_flags": {"ui_mode": "organization", "enable_3d_graph": False}}
+                "feature_flags": {"ui_mode": "organization", "enable_3d_graph": True}}
 
     def decide_approval(self, approval_id: str, supplied_hash: str, decision: str,
                         csrf_token: str) -> dict[str, Any]:

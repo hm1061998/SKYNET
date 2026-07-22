@@ -85,7 +85,10 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Graph filters", graph)
         self.assertIn("Open task details", graph)
         self.assertIn("aria-live", graph)
-        self.assertIn("onKeyDown", graph)
+        self.assertIn("Keyboard entity list", graph)
+        self.assertIn("THREE.WebGLRenderer", graph)
+        self.assertIn("THREE.Raycaster", graph)
+        self.assertIn("3D rendering is unavailable", graph)
 
     def test_server_keeps_legacy_and_v1_routes(self):
         server = (ROOT / "server.py").read_text(encoding="utf-8")
