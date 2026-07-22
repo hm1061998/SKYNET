@@ -4,6 +4,8 @@
 
 Replaced the columnar 3D organization chart with a living neural-brain visualization derived from Chat mode. The organization now appears as one collective intelligence with a central Work Order core, agent clusters distributed across two hemispheres, temporary worker synapses, task satellites, artifact orbits, approval junctions, neural fibers, and animated workflow impulses.
 
+Visual refinement based on operator review now matches Chat mode more closely: the anatomical cortex uses 950 luminous particles over the fiber substrate, the camera frames the brain as the primary subject, nothing is selected on initial load, task labels are suppressed, and artifact detail stays in the inspector/list instead of crowding the canvas. Only AI entities and approval junctions retain compact in-scene labels.
+
 ## 2. Architecture decisions
 
 - Preserved `/api/v1/topology`; visualization semantics changed without changing the domain contract.

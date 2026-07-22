@@ -123,6 +123,9 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Collective mind online", graph)
         self.assertIn("Debug links", graph)
         self.assertIn("signalCurves", graph)
+        self.assertIn("cortexPositions", graph)
+        self.assertIn("node.kind !== 'artifact'", graph)
+        self.assertIn("useState('')", graph)
 
     def test_server_keeps_legacy_and_v1_routes(self):
         server = (ROOT / "server.py").read_text(encoding="utf-8")

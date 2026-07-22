@@ -39,12 +39,12 @@ function labelSprite(text, color) {
   canvas.width = 512; canvas.height = 72;
   context.fillStyle = 'rgba(3,8,20,.82)'; context.fillRect(0, 0, 512, 72);
   context.strokeStyle = `#${color.toString(16).padStart(6, '0')}`; context.strokeRect(1, 1, 510, 70);
-  context.fillStyle = '#e9fbff'; context.font = '24px Consolas'; context.textAlign = 'center'; context.textBaseline = 'middle';
+  context.fillStyle = '#e9fbff'; context.font = '20px Consolas'; context.textAlign = 'center'; context.textBaseline = 'middle';
   const compact = text.length > 31 ? `${text.slice(0, 30)}…` : text;
   context.fillText(compact, 256, 37);
   const texture = new THREE.CanvasTexture(canvas);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
-  sprite.scale.set(2.15, .3, 1); sprite.position.y = -.35; sprite.userData.texture = texture;
+  sprite.scale.set(1.45, .2, 1); sprite.position.y = -.29; sprite.userData.texture = texture;
   return sprite;
 }
 
@@ -59,7 +59,7 @@ function dispose(root) {
 function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks }) {
   const hostRef = useRef(null);
   const runtimeRef = useRef(null);
-  const viewStateRef = useRef({ rotationX: -.08, rotationY: 0, zoom: 12.5 });
+  const viewStateRef = useRef({ rotationX: -.08, rotationY: 0, zoom: 7.4 });
 
   useEffect(() => {
     const host = hostRef.current;
@@ -90,10 +90,19 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
 
     const brainShell = new THREE.Group();
     [-1, 1].forEach((side) => {
-      const lobe = new THREE.Mesh(new THREE.SphereGeometry(1.72, 28, 20), new THREE.MeshBasicMaterial({ color: side < 0 ? 0x4fe3ff : 0x806cff, wireframe: true, transparent: true, opacity: .035 }));
+      const lobe = new THREE.Mesh(new THREE.SphereGeometry(1.72, 28, 20), new THREE.MeshBasicMaterial({ color: side < 0 ? 0x4fe3ff : 0x806cff, wireframe: true, transparent: true, opacity: .018 }));
       lobe.scale.set(.72, 1, .82); lobe.position.x = side * .72; brainShell.add(lobe);
     });
     graph.add(brainShell);
+
+    const cortexPositions = new Float32Array(950 * 3);
+    for (let index = 0; index < 950; index += 1) {
+      const point = brainPoint(index, 950); const jitter = .82 + Math.random() * .42;
+      cortexPositions.set([point.x * jitter, point.y * jitter, point.z * jitter], index * 3);
+    }
+    const cortexGeometry = new THREE.BufferGeometry(); cortexGeometry.setAttribute('position', new THREE.BufferAttribute(cortexPositions, 3));
+    const cortex = new THREE.Points(cortexGeometry, new THREE.PointsMaterial({ color: 0x4fe3ff, size: .026, transparent: true, opacity: .4, blending: THREE.AdditiveBlending, depthWrite: false }));
+    graph.add(cortex);
 
     const core = new THREE.Mesh(new THREE.IcosahedronGeometry(.34, 3), new THREE.MeshBasicMaterial({ color: 0x50f6c8, wireframe: true, transparent: true, opacity: .72 }));
     const coreAura = new THREE.Mesh(new THREE.SphereGeometry(.58, 24, 16), new THREE.MeshBasicMaterial({ color: 0x4fe3ff, transparent: true, opacity: .075, side: THREE.BackSide, blending: THREE.AdditiveBlending }));
@@ -124,7 +133,8 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       const core = new THREE.Mesh(new THREE.IcosahedronGeometry(radius, 2), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: node.status === 'waiting_approval' || node.status === 'pending' ? 3.8 : 2.1, roughness: .2 }));
       core.userData.nodeId = node.id; group.add(core);
       const halo = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.3, 18, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
-      halo.userData.nodeId = node.id; group.add(halo, labelSprite(node.label, color));
+      halo.userData.nodeId = node.id; group.add(halo);
+      if (node.kind === 'agent' || node.kind === 'approval') group.add(labelSprite(node.label, color));
       if (node.kind === 'agent') {
         const ring = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.9, .012, 6, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .55 }));
         ring.rotation.x = Math.PI / 2; group.add(ring);
@@ -150,10 +160,10 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       line.userData.edge = edge; line.userData.baseColor = color;
       edgeLines.push(line); graph.add(line);
     });
-    const signalCount = Math.min(42, Math.max(12, signalCurves.length * 2));
+    const signalCount = Math.min(22, Math.max(8, signalCurves.length));
     const signalGeometry = new THREE.BufferGeometry();
     signalGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(signalCount * 3), 3));
-    const signals = new THREE.Points(signalGeometry, new THREE.PointsMaterial({ color: 0x9ffff0, size: .055, transparent: true, opacity: .82, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const signals = new THREE.Points(signalGeometry, new THREE.PointsMaterial({ color: 0x9ffff0, size: .035, transparent: true, opacity: .66, blending: THREE.AdditiveBlending, depthWrite: false }));
     graph.add(signals);
     runtimeRef.current = { nodeMeshes, edgeLines };
 
@@ -162,7 +172,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
     const pointerDown = (event) => { dragging = true; dragDistance = 0; px = event.clientX; py = event.clientY; renderer.domElement.setPointerCapture(event.pointerId); };
     const pointerMove = (event) => { if (!dragging) return; const dx = event.clientX - px; const dy = event.clientY - py; dragDistance += Math.hypot(dx, dy); graph.rotation.y += dx * .006; graph.rotation.x = THREE.MathUtils.clamp(graph.rotation.x + dy * .004, -.7, .7); px = event.clientX; py = event.clientY; };
     const pointerUp = (event) => { dragging = false; if (dragDistance > 6) return; const rect = renderer.domElement.getBoundingClientRect(); pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1); raycaster.setFromCamera(pointer, camera); const hits = raycaster.intersectObjects([...nodeMeshes.values()], true); const nodeId = hits[0]?.object.userData.nodeId || hits[0]?.object.parent?.userData.nodeId; if (nodeId) onSelect(nodeId); };
-    const wheel = (event) => { event.preventDefault(); targetZoom = THREE.MathUtils.clamp(targetZoom + event.deltaY * .006, 7.5, 18); };
+    const wheel = (event) => { event.preventDefault(); targetZoom = THREE.MathUtils.clamp(targetZoom + event.deltaY * .006, 4.5, 11.5); };
     renderer.domElement.addEventListener('pointerdown', pointerDown); renderer.domElement.addEventListener('pointermove', pointerMove); renderer.domElement.addEventListener('pointerup', pointerUp); renderer.domElement.addEventListener('wheel', wheel, { passive: false });
     const resize = () => { const width = host.clientWidth; const height = host.clientHeight; camera.aspect = width / Math.max(height, 1); camera.updateProjectionMatrix(); renderer.setSize(width, height, false); };
     const observer = new ResizeObserver(resize); observer.observe(host); resize();
@@ -193,19 +203,22 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
 }
 
 export default function LiveOrganizationGraph({ topology, onOpenTask }) {
-  const [selectedId, setSelectedId] = useState(topology.nodes[0]?.id || '');
+  const [selectedId, setSelectedId] = useState('');
   const [visibleKinds, setVisibleKinds] = useState(new Set(KIND_ORDER));
   const [debugLinks, setDebugLinks] = useState(false);
   const topologySignature = JSON.stringify({ nodes: topology.nodes, edges: topology.edges });
   const positioned = useMemo(() => layout(topology.nodes.filter((node) => visibleKinds.has(node.kind)), topology.edges), [topologySignature, visibleKinds]);
   const ids = new Set(positioned.map((node) => node.id));
   const edges = useMemo(() => topology.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)), [topologySignature, positioned]);
+  const sceneNodes = useMemo(() => positioned.filter((node) => node.kind !== 'artifact'), [positioned]);
+  const sceneIds = new Set(sceneNodes.map((node) => node.id));
+  const sceneEdges = useMemo(() => edges.filter((edge) => sceneIds.has(edge.source) && sceneIds.has(edge.target)), [edges, sceneNodes]);
   const selected = topology.nodes.find((node) => node.id === selectedId);
   const toggleKind = (kind) => setVisibleKinds((current) => { const next = new Set(current); if (next.has(kind) && next.size > 1) next.delete(kind); else next.add(kind); return next; });
 
   return <div className="live-graph-shell">
     <div className="graph-toolbar" aria-label="Graph filters">{KIND_ORDER.map((kind) => <button key={kind} className={visibleKinds.has(kind) ? `kind-${kind} active` : ''} aria-pressed={visibleKinds.has(kind)} onClick={() => toggleKind(kind)}>{KIND_LABELS[kind]}</button>)}<button className={debugLinks ? 'active' : ''} aria-pressed={debugLinks} onClick={() => setDebugLinks((value) => !value)}>Debug links</button><span className="live-indicator"><i /> Collective mind online</span></div>
-    <div className="live-graph-workspace"><ThreeOrganizationGraph nodes={positioned} edges={edges} selectedId={selectedId} onSelect={setSelectedId} debugLinks={debugLinks}/><aside className="graph-inspector" aria-live="polite">{selected ? <><span className={`entity-kind kind-${selected.kind}`}>{KIND_LABELS[selected.kind]}</span><h3>{selected.label}</h3><span className={`ops-status status-${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><p>{selected.detail || 'No operational detail.'}</p><dl><dt>ID</dt><dd><code>{selected.id}</code></dd>{selected.current_task && <><dt>Current task</dt><dd>{selected.current_task}</dd></>}{selected.risk && <><dt>Risk</dt><dd>{selected.risk}</dd></>}</dl>{selected.kind === 'task' && <button onClick={() => onOpenTask(selected.id)}>Open task details</button>}</> : <p>Select an entity to inspect it.</p>}<div className="accessible-entities"><strong>Keyboard entity list</strong>{positioned.map((node) => <button key={node.id} className={node.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(node.id)}>{node.label}</button>)}</div></aside></div>
+    <div className="live-graph-workspace"><ThreeOrganizationGraph nodes={sceneNodes} edges={sceneEdges} selectedId={selectedId} onSelect={setSelectedId} debugLinks={debugLinks}/><aside className="graph-inspector" aria-live="polite">{selected ? <><span className={`entity-kind kind-${selected.kind}`}>{KIND_LABELS[selected.kind]}</span><h3>{selected.label}</h3><span className={`ops-status status-${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><p>{selected.detail || 'No operational detail.'}</p><dl><dt>ID</dt><dd><code>{selected.id}</code></dd>{selected.current_task && <><dt>Current task</dt><dd>{selected.current_task}</dd></>}{selected.risk && <><dt>Risk</dt><dd>{selected.risk}</dd></>}</dl>{selected.kind === 'task' && <button onClick={() => onOpenTask(selected.id)}>Open task details</button>}</> : <p>Select an AI entity or use the list below.</p>}<div className="accessible-entities"><strong>Keyboard entity list</strong>{positioned.map((node) => <button key={node.id} className={node.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(node.id)}>{node.label}</button>)}</div></aside></div>
     <div className="graph-relationship-legend"><span>Neural core: company mind</span><span>Green: agents</span><span>Orange: temporary workers</span><span>Amber: approval junction</span><time>Snapshot {new Date(topology.generated_at).toLocaleTimeString()}</time></div>
   </div>;
 }
