@@ -181,8 +181,8 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("seededUnit", graph)
         self.assertIn("VIEW_STORAGE_KEY", graph)
         self.assertIn("storeViewState", graph)
-        self.assertIn("pauseMotion", graph)
-        self.assertIn("12000", graph)
+        self.assertNotIn("pauseMotion", graph)
+        self.assertNotIn("resumeMotionTimer", graph)
 
     def test_server_keeps_legacy_and_v1_routes(self):
         server = (ROOT / "server.py").read_text(encoding="utf-8")

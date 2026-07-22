@@ -28,6 +28,8 @@ Motion no longer derives positions from absolute elapsed time multiplied by the 
 
 Agent activity rings now use a tighter radius, thinner geometry, lower active opacity and restrained active scaling. Labels sit below the ring footprint so the active-state indicator no longer obscures agent names at typical camera angles.
 
+Pointer drag and wheel zoom no longer trigger a temporary animation pause. Neural motion continues during graph interaction, while the operating-system `prefers-reduced-motion` preference remains authoritative for accessibility.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.

@@ -531,15 +531,7 @@ function ThreeOrganizationGraph({
     const prefersReducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    let reduceMotion = prefersReducedMotion;
-    let resumeMotionTimer;
-    const pauseMotion = () => {
-      reduceMotion = true;
-      window.clearTimeout(resumeMotionTimer);
-      resumeMotionTimer = window.setTimeout(() => {
-        reduceMotion = prefersReducedMotion;
-      }, 12000);
-    };
+    const reduceMotion = prefersReducedMotion;
     const rememberView = () => {
       viewStateRef.current = {
         rotationX: graph.rotation.x,
@@ -549,7 +541,6 @@ function ThreeOrganizationGraph({
     };
     const pointerDown = (event) => {
       dragging = true;
-      pauseMotion();
       dragDistance = 0;
       px = event.clientX;
       py = event.clientY;
@@ -589,7 +580,6 @@ function ThreeOrganizationGraph({
     };
     const wheel = (event) => {
       event.preventDefault();
-      pauseMotion();
       targetZoom = THREE.MathUtils.clamp(
         targetZoom + event.deltaY * 0.006,
         4.5,
@@ -727,7 +717,6 @@ function ThreeOrganizationGraph({
         zoom: targetZoom,
       };
       storeViewState(viewStateRef.current);
-      window.clearTimeout(resumeMotionTimer);
       runtimeRef.current = null;
       cancelAnimationFrame(animationId);
       observer.disconnect();
