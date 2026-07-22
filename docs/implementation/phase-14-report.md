@@ -4,6 +4,8 @@
 
 Upgraded the operational Organization Graph from SVG to an interactive Three.js scene aligned with Chat mode. Live topology nodes now render as luminous 3D entities with animated halos, labels, typed links, selection highlighting, drag rotation, wheel zoom, and raycast inspection. A keyboard entity list and text inspector remain available beside the canvas.
 
+Post-release stabilization prevents five-second dashboard polling from resetting the operator's view. Semantically unchanged topology no longer rebuilds the Three.js scene; necessary rebuilds preserve rotation and zoom.
+
 ## 2. Architecture decisions
 
 - Reused the existing `three` dependency and Chat graph interaction patterns instead of adding a graph framework.

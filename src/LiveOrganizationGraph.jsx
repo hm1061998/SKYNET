@@ -41,13 +41,14 @@ function dispose(root) {
 function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
   const hostRef = useRef(null);
   const runtimeRef = useRef(null);
+  const viewStateRef = useRef({ rotationX: -.08, rotationY: 0, zoom: 12.5 });
 
   useEffect(() => {
     const host = hostRef.current;
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x020711, .055);
     const camera = new THREE.PerspectiveCamera(48, 1, .1, 100);
-    camera.position.set(0, .1, 12.5);
+    camera.position.set(0, .1, viewStateRef.current.zoom);
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -62,7 +63,10 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
     renderer.setClearColor(0x020711, 0); renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
 
-    const graph = new THREE.Group(); graph.rotation.x = -.08; scene.add(graph);
+    const graph = new THREE.Group();
+    graph.rotation.x = viewStateRef.current.rotationX;
+    graph.rotation.y = viewStateRef.current.rotationY;
+    scene.add(graph);
     scene.add(new THREE.AmbientLight(0x79bfff, .7));
     const key = new THREE.PointLight(0x50f6c8, 18, 25); key.position.set(0, 1, 5); scene.add(key);
 
@@ -105,7 +109,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
     });
     runtimeRef.current = { nodeMeshes, edgeLines };
 
-    let dragging = false; let dragDistance = 0; let px = 0; let py = 0; let targetZoom = camera.position.z;
+    let dragging = false; let dragDistance = 0; let px = 0; let py = 0; let targetZoom = viewStateRef.current.zoom;
     const pointer = new THREE.Vector2(); const raycaster = new THREE.Raycaster();
     const pointerDown = (event) => { dragging = true; dragDistance = 0; px = event.clientX; py = event.clientY; renderer.domElement.setPointerCapture(event.pointerId); };
     const pointerMove = (event) => { if (!dragging) return; const dx = event.clientX - px; const dy = event.clientY - py; dragDistance += Math.hypot(dx, dy); graph.rotation.y += dx * .006; graph.rotation.x = THREE.MathUtils.clamp(graph.rotation.x + dy * .004, -.7, .7); px = event.clientX; py = event.clientY; };
@@ -118,7 +122,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
     let animationId; const started = performance.now();
     const animate = (now) => { animationId = requestAnimationFrame(animate); const time = (now - started) / 1000; camera.position.z += (targetZoom - camera.position.z) * .1; if (!dragging) graph.rotation.y += .0008; nodeMeshes.forEach((item) => { const pulse = .5 + Math.sin(time * 2.2 + item.userData.phase) * .5; item.userData.core.rotation.x += .006; item.userData.core.rotation.y += .01; item.userData.halo.scale.setScalar(1 + pulse * .16); }); renderer.render(scene, camera); };
     animationId = requestAnimationFrame(animate);
-    return () => { runtimeRef.current = null; cancelAnimationFrame(animationId); observer.disconnect(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('wheel', wheel); dispose(graph); renderer.dispose(); renderer.domElement.remove(); };
+    return () => { viewStateRef.current = { rotationX: graph.rotation.x, rotationY: graph.rotation.y, zoom: targetZoom }; runtimeRef.current = null; cancelAnimationFrame(animationId); observer.disconnect(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('wheel', wheel); dispose(graph); renderer.dispose(); renderer.domElement.remove(); };
   }, [nodes, edges, onSelect]);
 
   useEffect(() => {
@@ -143,9 +147,10 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect }) {
 export default function LiveOrganizationGraph({ topology, onOpenTask }) {
   const [selectedId, setSelectedId] = useState(topology.nodes[0]?.id || '');
   const [visibleKinds, setVisibleKinds] = useState(new Set(KIND_ORDER));
-  const positioned = useMemo(() => layout(topology.nodes.filter((node) => visibleKinds.has(node.kind))), [topology, visibleKinds]);
+  const topologySignature = JSON.stringify({ nodes: topology.nodes, edges: topology.edges });
+  const positioned = useMemo(() => layout(topology.nodes.filter((node) => visibleKinds.has(node.kind))), [topologySignature, visibleKinds]);
   const ids = new Set(positioned.map((node) => node.id));
-  const edges = useMemo(() => topology.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)), [topology, positioned]);
+  const edges = useMemo(() => topology.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)), [topologySignature, positioned]);
   const selected = topology.nodes.find((node) => node.id === selectedId);
   const toggleKind = (kind) => setVisibleKinds((current) => { const next = new Set(current); if (next.has(kind) && next.size > 1) next.delete(kind); else next.add(kind); return next; });
 
