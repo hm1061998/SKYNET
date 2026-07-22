@@ -41,10 +41,9 @@ function layout(nodes, edges) {
     const anchor = positions.get(assignedAgent.get(node.id)) || brainPoint(index, tasks.length).multiplyScalar(.65);
     positions.set(node.id, anchor.clone().multiplyScalar(1.38).add(new THREE.Vector3(0, .12, .18)));
   });
-  const skillOwner = new Map(edges.filter((edge) => edge.kind === 'uses_skill').map((edge) => [edge.target, edge.source]));
   nodes.filter((node) => node.kind === 'skill').forEach((node, index) => {
-    const anchor = positions.get(skillOwner.get(node.id)) || new THREE.Vector3(); const angle = index * 1.35 + .4;
-    positions.set(node.id, anchor.clone().add(new THREE.Vector3(Math.cos(angle) * .72, .38 + index % 2 * .22, Math.sin(angle) * .62)));
+    const angle = index / 8 * Math.PI * 2 + .3;
+    positions.set(node.id, new THREE.Vector3(Math.cos(angle) * 2.75, -1.9 + index % 2 * .28, Math.sin(angle) * 1.7));
   });
   const sourceTask = new Map(edges.filter((edge) => edge.kind === 'produces').map((edge) => [edge.target, edge.source]));
   const artifacts = nodes.filter((node) => node.kind === 'artifact');
@@ -60,15 +59,11 @@ function labelSprite(text, color) {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
   canvas.width = 320; canvas.height = 48;
-  context.beginPath(); context.roundRect(3, 5, 314, 38, 19);
-  context.fillStyle = 'rgba(3,8,20,.68)'; context.fill();
-  context.strokeStyle = `#${color.toString(16).padStart(6, '0')}`; context.globalAlpha = .45; context.stroke(); context.globalAlpha = 1;
-  context.fillStyle = '#dff8ff'; context.font = '18px Consolas'; context.textAlign = 'center'; context.textBaseline = 'middle';
-  const compact = text.length > 23 ? `${text.slice(0, 22)}…` : text;
-  context.fillText(compact, 160, 25);
   const texture = new THREE.CanvasTexture(canvas);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: .48, depthWrite: false }));
   sprite.scale.set(.86, .13, 1); sprite.position.y = -.24; sprite.userData.texture = texture;
+  sprite.userData.renderLabel = (value) => { context.clearRect(0, 0, canvas.width, canvas.height); context.beginPath(); context.roundRect(3, 5, 314, 38, 19); context.fillStyle = 'rgba(3,8,20,.68)'; context.fill(); context.strokeStyle = `#${color.toString(16).padStart(6, '0')}`; context.globalAlpha = .45; context.stroke(); context.globalAlpha = 1; context.fillStyle = '#dff8ff'; context.font = '18px Consolas'; context.textAlign = 'center'; context.textBaseline = 'middle'; const compact = value.length > 23 ? `${value.slice(0, 22)}…` : value; context.fillText(compact, 160, 25); texture.needsUpdate = true; sprite.userData.labelText = value; };
+  sprite.userData.renderLabel(text);
   return sprite;
 }
 
@@ -183,7 +178,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       group.userData.baseColor = color; group.userData.processState = node.processState || 'idle';
       group.userData.label = group.children.find((child) => child.isSprite) || null;
       group.userData.orbit = { radius: orbitRadius, angle: Math.atan2(node.position.z, node.position.x), y: node.position.y, speed: .045 + index % 5 * .012 };
-      nodeMeshes.set(node.id, group); graph.add(group);
+      group.visible = node.status !== 'hidden'; nodeMeshes.set(node.id, group); graph.add(group);
     });
 
     const edgeLines = []; const signalCurves = [];
@@ -192,7 +187,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       if (!source || !target) return;
       const middle = source.position.clone().lerp(target.position, .5); middle.z += .35;
       const curve = new THREE.QuadraticBezierCurve3(source.position, middle, target.position);
-      if (edge.kind !== 'reports_to') signalCurves.push(curve);
+      if (edge.kind !== 'reports_to' && edge.kind !== 'uses_skill') signalCurves.push(curve);
       const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(30));
       const color = edge.kind === 'gated_by' ? 0xffbd59 : edge.kind === 'uses_skill' ? 0xff75d8 : edge.kind === 'handoff_to' ? 0x50f6c8 : edge.kind === 'reports_to' ? 0x876dba : 0x285c72;
       const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: debugLinks ? .28 : 0 }));
@@ -239,12 +234,15 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       if (item.userData.label) item.userData.label.material.opacity = active ? 1 : .48;
     });
     runtime.edgeLines.forEach((line) => {
+      const edgeKey = `${line.userData.edge.source}|${line.userData.edge.target}|${line.userData.edge.kind}`;
+      const latestEdge = edges.find((item) => `${item.source}|${item.target}|${item.kind}` === edgeKey);
+      if (latestEdge) line.userData.edge = latestEdge;
       const edge = line.userData.edge;
       const active = edge.source === selectedId || edge.target === selectedId;
       const sourceState = runtime.nodeMeshes.get(edge.source)?.userData.processState;
       const targetState = runtime.nodeMeshes.get(edge.target)?.userData.processState;
-      const workflowEdge = ['assigned_to', 'handoff_to', 'uses_skill'].includes(edge.kind) && (['active', 'planned'].includes(sourceState) || edge.kind === 'handoff_to');
-      const activeWorkflowEdge = sourceState === 'active' || targetState === 'active';
+      const workflowEdge = edge.kind === 'uses_skill' ? edge.runtimeActive : ['assigned_to', 'handoff_to'].includes(edge.kind) && (['active', 'planned'].includes(sourceState) || edge.kind === 'handoff_to');
+      const activeWorkflowEdge = edge.runtimeActive || sourceState === 'active' || targetState === 'active';
       line.material.color.setHex(active ? 0xdffcff : line.userData.baseColor);
       line.material.opacity = active ? .92 : workflowEdge ? (activeWorkflowEdge ? .86 : .07) : debugLinks ? .2 : 0;
     });
@@ -257,6 +255,8 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
     runtime.nodeMeshes.forEach((item, id) => {
       const node = latest.get(id);
       if (!node) return;
+      item.visible = node.status !== 'hidden';
+      if (item.userData.label?.userData.labelText !== node.label) item.userData.label?.userData.renderLabel?.(node.label);
       const attention = node.status === 'active' || node.status === 'waiting_approval' || node.status === 'pending' || node.status === 'blocked' || node.status === 'failed';
       const processState = node.processState || 'idle';
       item.userData.processState = processState;
@@ -282,8 +282,9 @@ function LiveOrganizationGraph({ topology, onOpenTask, activity = 'idle', active
   const augmented = useMemo(() => {
     const taskOwners = new Map(topology.edges.filter((edge) => edge.kind === 'assigned_to').map((edge) => [edge.target, edge.source]));
     const handoffs = topology.edges.filter((edge) => edge.kind === 'depends_on').map((edge) => ({ source: taskOwners.get(edge.source), target: taskOwners.get(edge.target), kind: 'handoff_to' })).filter((edge) => edge.source && edge.target && edge.source !== edge.target).filter((edge, index, values) => values.findIndex((item) => item.source === edge.source && item.target === edge.target) === index);
-    const skills = runtimeSkills.map((name, index) => ({ id: `runtime-skill-${name}`, kind: 'skill', label: name, status: index === runtimeSkills.length - 1 && workflowActive ? 'active' : 'completed', detail: 'Runtime skill observed in execution logs' }));
-    const skillEdges = skills.map((skill) => ({ source: activeAgentId || 'developer', target: skill.id, kind: 'uses_skill' }));
+    const skills = Array.from({ length: 8 }, (_, index) => ({ id: `runtime-skill-slot-${index}`, kind: 'skill', label: runtimeSkills[index] || '', status: runtimeSkills[index] ? (index === runtimeSkills.length - 1 && workflowActive ? 'active' : 'completed') : 'hidden', detail: 'Runtime skill observed in execution logs' }));
+    const agentIds = topology.nodes.filter((node) => node.kind === 'agent').map((node) => node.id);
+    const skillEdges = agentIds.flatMap((agentId) => skills.map((skill, index) => ({ source: agentId, target: skill.id, kind: 'uses_skill', runtimeActive: Boolean(runtimeSkills[index]) && agentId === (activeAgentId || 'developer') })));
     return { nodes: [...topology.nodes, ...skills], edges: [...topology.edges, ...handoffs, ...skillEdges] };
   }, [topology, runtimeSkills.join('|'), activeAgentId, workflowActive]);
   const topologySignature = JSON.stringify({ nodes: augmented.nodes, edges: augmented.edges });
