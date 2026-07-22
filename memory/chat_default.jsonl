@@ -129,3 +129,5 @@
 {"role": "user", "content": "phát âm thanh cho văn bản sau: \"Lúa nếp là lúa nếp làng\"", "ts": 1784650676.4489846}
 {"role": "assistant", "content": "(kế hoạch cho tác vụ: Đọc to văn bản 'Lúa nếp là lúa nếp làng' bằng giọng đọc tự nhiên.)", "ts": 1784650786.8766642}
 {"role": "user", "content": "phát âm thanh cho văn bản sau: \"Lúa nếp là lúa nếp làng\"", "ts": 1784651022.905337}
+{"role": "user", "content": "mở trình duyệt, truy cập vào google.com", "ts": 1784692020.0417182}
+{"role": "assistant", "content": "(kế hoạch cho tác vụ: Mở trình duyệt web và truy cập vào địa chỉ google.com)", "ts": 1784692353.0084205}

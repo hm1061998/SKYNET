@@ -8,6 +8,7 @@ config.json
 
 # Local/generated tools
 Tool/
+core/__pycache__/
 
 # React / Yarn / Vite
 node_modules/

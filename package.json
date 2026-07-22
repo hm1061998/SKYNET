@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "yarn build && python server.py"
+    "start": "yarn build && py server.py"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
