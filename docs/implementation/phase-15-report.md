@@ -10,6 +10,8 @@ The two wireframe ellipsoid shells were removed after visual review. Hemisphere 
 
 Node labels were redesigned as compact translucent micro-pills at roughly forty percent of the previous footprint; only the selected entity receives full label opacity. AI entities, tasks, and approval junctions now move on deterministic, phase-offset elliptical orbits around the neural core with a subtle vertical drift. Visible relationship curves and signal particles track their moving endpoints. Operating-system reduced-motion preference disables automatic orbit and graph rotation.
 
+Graph refresh is now split into state updates and structural updates. Status/progress changes mutate existing Three.js materials and links without tearing down the scene. Selection and Debug links also update in place. Real structural changes preserve camera, rotation, and a shared animation epoch; deterministic cortex/star geometry prevents background reseeding, so existing neural particles and node orbits do not jump during rebuild.
+
 ## 2. Architecture decisions
 
 - Preserved `/api/v1/topology`; visualization semantics changed without changing the domain contract.

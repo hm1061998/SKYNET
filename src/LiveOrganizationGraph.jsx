@@ -5,6 +5,11 @@ const KIND_ORDER = ['work_order', 'agent', 'task', 'artifact', 'approval'];
 const KIND_LABELS = { work_order: 'Work order', agent: 'AI entities', task: 'Tasks', artifact: 'Artifacts', approval: 'Human gates' };
 const COLORS = { work_order: 0x4fe3ff, agent: 0x50f6c8, task: 0x8a70ff, artifact: 0x4fa4d8, approval: 0xffbd59 };
 
+function seededUnit(index) {
+  const value = Math.sin(index * 12.9898 + 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
+
 function brainPoint(index, count) {
   const side = index % 2 ? 1 : -1;
   const i = Math.floor(index / 2); const n = Math.max(1, Math.ceil(count / 2));
@@ -61,6 +66,11 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
   const hostRef = useRef(null);
   const runtimeRef = useRef(null);
   const viewStateRef = useRef({ rotationX: -.08, rotationY: 0, zoom: 7.4 });
+  const animationEpochRef = useRef(performance.now());
+  const structureSignature = JSON.stringify({
+    nodes: nodes.map((node) => [node.id, node.kind, node.subkind]),
+    edges: edges.map((edge) => [edge.source, edge.target, edge.kind]),
+  });
 
   useEffect(() => {
     const host = hostRef.current;
@@ -102,7 +112,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
 
     const cortexPositions = new Float32Array(950 * 3);
     for (let index = 0; index < 950; index += 1) {
-      const point = brainPoint(index, 950); const jitter = .82 + Math.random() * .42;
+      const point = brainPoint(index, 950); const jitter = .82 + seededUnit(index) * .42;
       cortexPositions.set([point.x * jitter, point.y * jitter, point.z * jitter], index * 3);
     }
     const cortexGeometry = new THREE.BufferGeometry(); cortexGeometry.setAttribute('position', new THREE.BufferAttribute(cortexPositions, 3));
@@ -125,7 +135,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
     const starsGeometry = new THREE.BufferGeometry();
     const stars = new Float32Array(900);
     for (let index = 0; index < stars.length; index += 3) {
-      stars[index] = (Math.random() - .5) * 15; stars[index + 1] = (Math.random() - .5) * 9; stars[index + 2] = (Math.random() - .5) * 6;
+      stars[index] = (seededUnit(index) - .5) * 15; stars[index + 1] = (seededUnit(index + 1) - .5) * 9; stars[index + 2] = (seededUnit(index + 2) - .5) * 6;
     }
     starsGeometry.setAttribute('position', new THREE.BufferAttribute(stars, 3));
     graph.add(new THREE.Points(starsGeometry, new THREE.PointsMaterial({ color: 0x2b7995, size: .018, transparent: true, opacity: .34 })));
@@ -186,11 +196,11 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
     const resize = () => { const width = host.clientWidth; const height = host.clientHeight; camera.aspect = width / Math.max(height, 1); camera.updateProjectionMatrix(); renderer.setSize(width, height, false); };
     const observer = new ResizeObserver(resize); observer.observe(host); resize();
 
-    let animationId; const started = performance.now();
+    let animationId; const started = animationEpochRef.current;
     const animate = (now) => { animationId = requestAnimationFrame(animate); const time = (now - started) / 1000; camera.position.z += (targetZoom - camera.position.z) * .1; if (!dragging && !reduceMotion) graph.rotation.y += .0008; core.rotation.x = time * .18; core.rotation.y = time * .28; core.scale.setScalar(1 + Math.sin(time * 2.4) * .07); coreAura.scale.setScalar(1 + Math.sin(time * 1.6) * .1); callosum.material.opacity = .14 + Math.max(0, Math.sin(time * 2.1)) * .1; neuralBridge.rotation.z = Math.sin(time * .3) * .018; nodeMeshes.forEach((item) => { const pulse = .5 + Math.sin(time * 2.2 + item.userData.phase) * .5; const orbit = item.userData.orbit; if (orbit.radius && !reduceMotion) { const angle = orbit.angle + time * orbit.speed; item.position.set(Math.cos(angle) * orbit.radius, orbit.y + Math.sin(time * .45 + item.userData.phase) * .08, Math.sin(angle) * orbit.radius * .72); } item.userData.core.rotation.x += .006; item.userData.core.rotation.y += .01; item.userData.halo.scale.setScalar(1 + pulse * (item.userData.worker ? .28 : .16)); }); edgeLines.forEach((line) => { if (line.material.opacity <= 0) return; const source = nodeMeshes.get(line.userData.edge.source); const target = nodeMeshes.get(line.userData.edge.target); if (!source || !target) return; const curve = line.userData.curve; curve.v0.copy(source.position); curve.v2.copy(target.position); curve.v1.copy(source.position).lerp(target.position, .5); curve.v1.z += .35; const attribute = line.geometry.attributes.position; for (let pointIndex = 0; pointIndex < attribute.count; pointIndex += 1) { const point = curve.getPoint(pointIndex / (attribute.count - 1)); attribute.setXYZ(pointIndex, point.x, point.y, point.z); } attribute.needsUpdate = true; }); const signalPositions = signalGeometry.attributes.position; for (let index = 0; index < signalCount; index += 1) { const curve = signalCurves[index % Math.max(signalCurves.length, 1)]; const point = curve ? curve.getPoint((time * (.09 + index % 4 * .015) + index / signalCount) % 1) : new THREE.Vector3(); signalPositions.setXYZ(index, point.x, point.y, point.z); } signalPositions.needsUpdate = true; renderer.render(scene, camera); };
     animationId = requestAnimationFrame(animate);
     return () => { viewStateRef.current = { rotationX: graph.rotation.x, rotationY: graph.rotation.y, zoom: targetZoom }; runtimeRef.current = null; cancelAnimationFrame(animationId); observer.disconnect(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('wheel', wheel); dispose(graph); renderer.dispose(); renderer.domElement.remove(); };
-  }, [nodes, edges, onSelect, debugLinks]);
+  }, [structureSignature, onSelect]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -208,6 +218,19 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       line.material.opacity = active ? .92 : debugLinks ? .28 : 0;
     });
   }, [selectedId, nodes, edges, debugLinks]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    const latest = new Map(nodes.map((node) => [node.id, node]));
+    runtime.nodeMeshes.forEach((item, id) => {
+      const node = latest.get(id);
+      if (!node) return;
+      const attention = node.status === 'waiting_approval' || node.status === 'pending' || node.status === 'blocked' || node.status === 'failed';
+      item.userData.core.material.emissiveIntensity = attention ? 3.8 : 2.1;
+      item.userData.halo.material.opacity = id === selectedId ? .34 : attention ? .14 : .08;
+    });
+  }, [nodes, selectedId]);
 
   return <div ref={hostRef} className="organization-3d-stage" aria-label="Interactive 3D graph of the live AI organization" />;
 }

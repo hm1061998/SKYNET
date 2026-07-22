@@ -25,4 +25,6 @@ Every displayed value comes from `/api/v1` structured projections. React escapes
 
 The page polls every five seconds and receives persisted command events on the next refresh. It works with keyboard/pointer input and without voice. Responsive layouts collapse navigation and keep chat accessible on narrow screens; reduced-motion preferences disable animation.
 
+Polling does not rebuild the WebGL scene for status-only changes. Existing node materials, glow, links, and labels update in place. When node/edge membership changes, the renderer preserves view state and animation time and rebuilds from deterministic geometry to avoid a visible camera, orbit, or particle reset.
+
 Manual checklist: verify 3D drag/zoom/raycast selection, keyboard entity selection, filters, high-risk confirm/cancel, approval beacon, task detail close button, mobile navigation scroll, legacy chat switch, browser with voice denied, network error/retry, and no script execution when API text contains XSS fixtures.

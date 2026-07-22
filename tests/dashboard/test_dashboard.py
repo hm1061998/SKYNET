@@ -132,6 +132,10 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("context.roundRect", graph)
         self.assertIn("userData.orbit", graph)
         self.assertIn("prefers-reduced-motion", graph)
+        self.assertIn("structureSignature", graph)
+        self.assertIn("runtime.nodeMeshes", graph)
+        self.assertIn("animationEpochRef", graph)
+        self.assertIn("seededUnit", graph)
 
     def test_server_keeps_legacy_and_v1_routes(self):
         server = (ROOT / "server.py").read_text(encoding="utf-8")
