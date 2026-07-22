@@ -26,6 +26,8 @@ class AgentStatus(str, Enum):
 
 class GoalStatus(str, Enum):
     DRAFT = "draft"
+    CLARIFICATION = "clarification"
+    READY = "ready"
     ACTIVE = "active"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -37,6 +39,8 @@ class WorkOrderStatus(str, Enum):
     APPROVAL_REQUIRED = "approval_required"
     APPROVED = "approved"
     IN_PROGRESS = "in_progress"
+    PAUSED = "paused"
+    BLOCKED = "blocked"
     REVIEW = "review"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -48,9 +52,12 @@ class TaskStatus(str, Enum):
     BLOCKED = "blocked"
     READY = "ready"
     IN_PROGRESS = "in_progress"
+    WAITING_INPUT = "waiting_input"
+    WAITING_APPROVAL = "waiting_approval"
     REVIEW = "review"
     COMPLETED = "completed"
     FAILED = "failed"
+    TIMED_OUT = "timed_out"
     CANCELLED = "cancelled"
 
 

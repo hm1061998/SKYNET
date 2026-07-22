@@ -321,13 +321,23 @@ class TaskDependency(Serializable):
 
 
 TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
-    TaskStatus.DRAFT: frozenset({TaskStatus.BLOCKED, TaskStatus.READY, TaskStatus.CANCELLED}),
-    TaskStatus.BLOCKED: frozenset({TaskStatus.READY, TaskStatus.CANCELLED}),
-    TaskStatus.READY: frozenset({TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED}),
-    TaskStatus.IN_PROGRESS: frozenset({TaskStatus.REVIEW, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}),
+    TaskStatus.DRAFT: frozenset({TaskStatus.BLOCKED, TaskStatus.READY, TaskStatus.WAITING_INPUT,
+                                 TaskStatus.WAITING_APPROVAL, TaskStatus.TIMED_OUT, TaskStatus.CANCELLED}),
+    TaskStatus.BLOCKED: frozenset({TaskStatus.READY, TaskStatus.WAITING_INPUT,
+                                   TaskStatus.WAITING_APPROVAL, TaskStatus.TIMED_OUT, TaskStatus.CANCELLED}),
+    TaskStatus.READY: frozenset({TaskStatus.BLOCKED, TaskStatus.IN_PROGRESS,
+                                 TaskStatus.TIMED_OUT, TaskStatus.CANCELLED}),
+    TaskStatus.IN_PROGRESS: frozenset({TaskStatus.WAITING_INPUT, TaskStatus.WAITING_APPROVAL,
+                                       TaskStatus.REVIEW, TaskStatus.COMPLETED, TaskStatus.FAILED,
+                                       TaskStatus.TIMED_OUT, TaskStatus.CANCELLED}),
+    TaskStatus.WAITING_INPUT: frozenset({TaskStatus.READY, TaskStatus.TIMED_OUT,
+                                         TaskStatus.CANCELLED, TaskStatus.FAILED}),
+    TaskStatus.WAITING_APPROVAL: frozenset({TaskStatus.READY, TaskStatus.TIMED_OUT,
+                                            TaskStatus.CANCELLED, TaskStatus.FAILED}),
     TaskStatus.REVIEW: frozenset({TaskStatus.IN_PROGRESS, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}),
     TaskStatus.COMPLETED: frozenset(),
     TaskStatus.FAILED: frozenset({TaskStatus.READY, TaskStatus.CANCELLED}),
+    TaskStatus.TIMED_OUT: frozenset({TaskStatus.READY, TaskStatus.CANCELLED}),
     TaskStatus.CANCELLED: frozenset(),
 }
 
@@ -346,6 +356,24 @@ class Task(Serializable):
     reviewer_id: str | None = None
     author_id: str | None = None
     version: int = 1
+    objective: str = ""
+    assigned_role: str = ""
+    worker_specialization: str | None = None
+    inputs: dict[str, Any] = field(default_factory=dict)
+    expected_output_schema: dict[str, Any] = field(default_factory=dict)
+    acceptance_criteria: tuple[AcceptanceCriterion, ...] = ()
+    retry_max_attempts: int = 1
+    retry_backoff_seconds: float = 0.0
+    timeout_seconds: float = 300.0
+    required_permissions: tuple[str, ...] = ()
+    required_artifact_ids: tuple[str, ...] = ()
+    allocated_tokens: int = 0
+    allocated_cost_units: float = 0.0
+    allocated_wall_seconds: float = 0.0
+    review_policy: str = "none"
+    idempotency_key: str = ""
+    attempt_count: int = 0
+    next_eligible_at: datetime | None = None
 
     def __post_init__(self) -> None:
         require_id(self.id)
@@ -363,6 +391,15 @@ class Task(Serializable):
             raise DomainValidationError("duplicate task dependency")
         if any(item.task_id != self.id for item in self.dependencies):
             raise DomainValidationError("dependency task_id must match task.id")
+        if self.retry_max_attempts < 1 or self.retry_backoff_seconds < 0 or self.timeout_seconds <= 0:
+            raise DomainValidationError("task retry and timeout values are invalid")
+        if (self.allocated_tokens < 0 or self.allocated_cost_units < 0
+                or self.allocated_wall_seconds < 0 or self.attempt_count < 0):
+            raise DomainValidationError("task allocation and attempt values cannot be negative")
+        if self.next_eligible_at is not None:
+            require_utc(self.next_eligible_at, "task.next_eligible_at")
+        json_value(self.inputs)
+        json_value(self.expected_output_schema)
 
     def transition(self, target: TaskStatus, *, reopen: bool = False) -> "Task":
         """Return a new task after validating a lifecycle transition."""
@@ -383,11 +420,23 @@ class Task(Serializable):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Task":
-        return cls(data["id"], data["work_order_id"], data["title"], data["owner_id"],
-                   TaskStatus(data["status"]), Priority(data["priority"]), RiskLevel(data["risk_level"]),
-                   utc_from_iso(data["created_at"]),
-                   tuple(TaskDependency(**item) for item in data.get("dependencies", ())),
-                   data.get("reviewer_id"), data.get("author_id"), int(data.get("version", 1)))
+        return cls(
+            data["id"], data["work_order_id"], data["title"], data["owner_id"],
+            TaskStatus(data["status"]), Priority(data["priority"]), RiskLevel(data["risk_level"]),
+            utc_from_iso(data["created_at"]),
+            tuple(TaskDependency(**item) for item in data.get("dependencies", ())),
+            data.get("reviewer_id"), data.get("author_id"), int(data.get("version", 1)),
+            data.get("objective", ""), data.get("assigned_role", ""), data.get("worker_specialization"),
+            dict(data.get("inputs", {})), dict(data.get("expected_output_schema", {})),
+            tuple(AcceptanceCriterion(**item) for item in data.get("acceptance_criteria", ())),
+            int(data.get("retry_max_attempts", 1)), float(data.get("retry_backoff_seconds", 0)),
+            float(data.get("timeout_seconds", 300)), tuple(data.get("required_permissions", ())),
+            tuple(data.get("required_artifact_ids", ())), int(data.get("allocated_tokens", 0)),
+            float(data.get("allocated_cost_units", 0)), float(data.get("allocated_wall_seconds", 0)),
+            data.get("review_policy", "none"), data.get("idempotency_key", ""),
+            int(data.get("attempt_count", 0)),
+            utc_from_iso(data["next_eligible_at"]) if data.get("next_eligible_at") else None,
+        )
 
 
 @dataclass(frozen=True)
@@ -402,6 +451,18 @@ class WorkOrder(Serializable):
     acceptance_criteria: tuple[AcceptanceCriterion, ...] = ()
     task_ids: tuple[str, ...] = ()
     version: int = 1
+    organization_id: str = ""
+    objective: str = ""
+    requested_by: str = ""
+    deliverables: tuple[str, ...] = ()
+    constraints: tuple[str, ...] = ()
+    risk_level: RiskLevel = RiskLevel.LOW
+    budget_id: str | None = None
+    deadline: datetime | None = None
+    approval_required: bool = False
+    approval_granted: bool = False
+    artifact_ids: tuple[str, ...] = ()
+    completion_event_emitted: bool = False
 
     def __post_init__(self) -> None:
         require_id(self.id)
@@ -415,14 +476,34 @@ class WorkOrder(Serializable):
             raise DomainValidationError("work_order.version must be positive")
         if len(self.task_ids) != len(set(self.task_ids)):
             raise DomainValidationError("work_order task IDs must be unique")
+        require_enum(self.risk_level, RiskLevel, "work_order.risk_level")
+        if self.organization_id:
+            require_id(self.organization_id, "work_order.organization_id")
+        if self.requested_by:
+            require_id(self.requested_by, "work_order.requested_by")
+        if self.budget_id is not None:
+            require_id(self.budget_id, "work_order.budget_id")
+        if self.deadline is not None:
+            require_utc(self.deadline, "work_order.deadline")
+            if self.deadline <= self.created_at:
+                raise DomainValidationError("work order deadline must be after creation")
+        if self.approval_granted and not self.approval_required:
+            raise DomainValidationError("approval cannot be granted when it is not required")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WorkOrder":
-        return cls(data["id"], data["goal_id"], data["title"], data["accountable_owner_id"],
-                   data["constitution_version"], WorkOrderStatus(data["status"]),
-                   utc_from_iso(data["created_at"]),
-                   tuple(AcceptanceCriterion(**item) for item in data.get("acceptance_criteria", ())),
-                   tuple(data.get("task_ids", ())), int(data.get("version", 1)))
+        return cls(
+            data["id"], data["goal_id"], data["title"], data["accountable_owner_id"],
+            data["constitution_version"], WorkOrderStatus(data["status"]), utc_from_iso(data["created_at"]),
+            tuple(AcceptanceCriterion(**item) for item in data.get("acceptance_criteria", ())),
+            tuple(data.get("task_ids", ())), int(data.get("version", 1)),
+            data.get("organization_id", ""), data.get("objective", ""), data.get("requested_by", ""),
+            tuple(data.get("deliverables", ())), tuple(data.get("constraints", ())),
+            RiskLevel(data.get("risk_level", "low")), data.get("budget_id"),
+            utc_from_iso(data["deadline"]) if data.get("deadline") else None,
+            bool(data.get("approval_required", False)), bool(data.get("approval_granted", False)),
+            tuple(data.get("artifact_ids", ())), bool(data.get("completion_event_emitted", False)),
+        )
 
 
 @dataclass(frozen=True)
