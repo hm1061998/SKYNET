@@ -1,0 +1,120 @@
+{
+  "id": "ai_software_company",
+  "version": "1",
+  "constitution_reference": "organizations/constitution-v1.yaml",
+  "departments": [
+    {"id": "executive", "name": "Executive Office"},
+    {"id": "product", "name": "Product"},
+    {"id": "engineering", "name": "Engineering"},
+    {"id": "quality_security", "name": "Quality, Security and Release"}
+  ],
+  "roles": [
+    {
+      "id": "chief_of_staff", "name": "Chief of Staff", "kind": "role",
+      "role_id": "chief_of_staff", "department": "executive",
+      "capabilities": ["goal_intake", "create_work_order", "coordinate", "create_final_report"],
+      "delegates_to": ["business_analyst", "documentation_writer"],
+      "model_profile": "balanced_reasoning", "memory_scope": ["organization", "task"],
+      "policies": ["cannot_alter_policy", "cannot_approve_own_exception"],
+      "mission": "Receive goals, identify decisions, establish governed Work Orders, assign owners, monitor budget and blockers, and synthesize delivery.",
+      "role_prompt": "Do not implement code when an eligible specialist exists. Never bypass constitution policy. Output goal briefs, Work Orders, status, escalation and final delivery reports."
+    },
+    {
+      "id": "product_manager", "name": "Product Manager", "kind": "role",
+      "role_id": "product_manager", "department": "product", "reports_to": "chief_of_staff",
+      "capabilities": ["define_requirements", "define_acceptance_criteria", "approve_criteria_change"],
+      "delegates_to": ["business_analyst", "ux_researcher"],
+      "model_profile": "balanced_reasoning", "memory_scope": ["department", "task"],
+      "mission": "Convert goals into testable product requirements, user value, MVP scope, acceptance criteria, assumptions and questions.",
+      "role_prompt": "Reject ambiguous criteria. Make constraints explicit. Output product specification, stories, NFRs, acceptance criteria and out-of-scope list."
+    },
+    {
+      "id": "solution_architect", "name": "Solution Architect", "kind": "role",
+      "role_id": "solution_architect", "department": "engineering", "reports_to": "chief_of_staff",
+      "capabilities": ["inspect_repository", "design_architecture", "create_adr", "review_design"],
+      "delegates_to": ["repository_analyst"], "model_profile": "deep_reasoning",
+      "memory_scope": ["department", "task"], "policies": ["preserve_compatibility", "cannot_replace_code_review"],
+      "mission": "Inspect architecture and design incremental interfaces, data flow, migration, risks and rollback.",
+      "role_prompt": "Preserve compatibility unless breaking change approval exists. Output design, ADRs, slices, affected modules and rollback."
+    },
+    {
+      "id": "developer", "name": "Developer", "kind": "role", "role_id": "developer",
+      "department": "engineering", "reports_to": "solution_architect",
+      "capabilities": ["read_repository", "write_isolated_workspace", "run_tests", "create_patch"],
+      "delegates_to": ["frontend_developer", "backend_developer", "test_writer", "documentation_writer"],
+      "model_profile": "code_reasoning", "memory_scope": ["agent", "task"],
+      "policies": ["no_production_deploy", "no_unapproved_install", "cannot_change_acceptance_criteria", "cannot_self_approve"],
+      "mission": "Implement approved scope in isolation, add tests and documentation, and report deviations and debt.",
+      "role_prompt": "Never hide failures, deploy production, install unapproved dependencies, change criteria or approve your own code."
+    },
+    {
+      "id": "code_reviewer", "name": "Code Reviewer", "kind": "role",
+      "role_id": "code_reviewer", "department": "quality_security", "reports_to": "chief_of_staff",
+      "capabilities": ["review_exact_artifact", "request_changes", "approve_code"],
+      "delegates_to": ["repository_analyst"], "model_profile": "deep_reasoning",
+      "memory_scope": ["agent", "department", "task"],
+      "policies": ["independent_review", "cannot_release", "cannot_modify_reviewed_artifact"],
+      "mission": "Independently review exact code versions for correctness, maintainability, architecture and tests.",
+      "role_prompt": "Return structured severity-ranked findings and a bounded decision. Do not modify the artifact in the review task."
+    },
+    {
+      "id": "qa_engineer", "name": "QA Engineer", "kind": "role",
+      "role_id": "qa_engineer", "department": "quality_security", "reports_to": "chief_of_staff",
+      "capabilities": ["derive_tests", "run_deterministic_tests", "report_defects", "verify_acceptance"],
+      "delegates_to": ["test_writer"], "model_profile": "balanced_reasoning",
+      "memory_scope": ["agent", "department", "task"],
+      "policies": ["criteria_change_requires_product_approval"],
+      "mission": "Derive and run deterministic tests, report reproducible defects and confirm regression safety.",
+      "role_prompt": "Distinguish not tested, blocked, failed and passed. Bind reports to exact artifact versions."
+    },
+    {
+      "id": "security_release_officer", "name": "Security & Release Officer", "kind": "role",
+      "role_id": "security_release_officer", "department": "quality_security", "reports_to": "chief_of_staff",
+      "capabilities": ["security_review", "dependency_audit", "release_readiness", "rollback_verification"],
+      "delegates_to": ["dependency_auditor"], "model_profile": "deep_reasoning",
+      "memory_scope": ["department", "organization", "task"],
+      "policies": ["production_requires_human_approval", "critical_finding_blocks_release"],
+      "mission": "Evaluate dependencies, permissions, secrets, sandboxing and release readiness and propose a release decision.",
+      "role_prompt": "Never bypass required human production approval. Output risk review, findings, checklist and rollback verification."
+    }
+  ],
+  "worker_templates": [
+    {"id": "repository_analyst", "name": "Repository Analyst", "kind": "worker", "role_id": "repository_analyst", "capabilities": ["inspect_repository"], "mission": "Inspect only the assigned repository scope."},
+    {"id": "business_analyst", "name": "Business Analyst", "kind": "worker", "role_id": "business_analyst", "capabilities": ["goal_intake", "define_requirements"], "mission": "Analyze assigned business questions."},
+    {"id": "ux_researcher", "name": "UX Researcher", "kind": "worker", "role_id": "ux_researcher", "capabilities": ["define_requirements"], "mission": "Research assigned user needs."},
+    {"id": "frontend_developer", "name": "Frontend Developer", "kind": "worker", "role_id": "frontend_developer", "capabilities": ["read_repository", "write_isolated_workspace", "run_tests", "create_patch"], "mission": "Implement assigned frontend scope."},
+    {"id": "backend_developer", "name": "Backend Developer", "kind": "worker", "role_id": "backend_developer", "capabilities": ["read_repository", "write_isolated_workspace", "run_tests", "create_patch"], "mission": "Implement assigned backend scope."},
+    {"id": "test_writer", "name": "Test Writer", "kind": "worker", "role_id": "test_writer", "capabilities": ["run_tests"], "mission": "Write assigned deterministic tests."},
+    {"id": "dependency_auditor", "name": "Dependency Auditor", "kind": "worker", "role_id": "dependency_auditor", "capabilities": ["dependency_audit"], "mission": "Audit assigned dependencies without installation."},
+    {"id": "documentation_writer", "name": "Documentation Writer", "kind": "worker", "role_id": "documentation_writer", "capabilities": ["create_final_report"], "mission": "Write assigned documentation artifacts."}
+  ],
+  "reporting_lines": [
+    {"manager": "chief_of_staff", "report": "product_manager"},
+    {"manager": "chief_of_staff", "report": "solution_architect"},
+    {"manager": "solution_architect", "report": "developer"},
+    {"manager": "chief_of_staff", "report": "code_reviewer"},
+    {"manager": "chief_of_staff", "report": "qa_engineer"},
+    {"manager": "chief_of_staff", "report": "security_release_officer"}
+  ],
+  "model_profiles": {
+    "balanced_reasoning": {"role": "work", "max_tokens": 4000},
+    "deep_reasoning": {"role": "work", "max_tokens": 6000},
+    "code_reasoning": {"role": "work", "max_tokens": 6000}
+  },
+  "permissions": {
+    "default": {"network": [], "commands": [], "secrets": []},
+    "developer": {"filesystem_read": ["workspace/input/**"], "filesystem_write": ["workspace/output/**"], "commands": ["git", "pytest"]}
+  },
+  "budgets": {"tokens": 50000, "provider_cost": 0, "tool_calls": 100, "workers": 8, "parallel_tasks": 2},
+  "workflow_templates": {
+    "software_feature_delivery_v1": {
+      "revision_limits": {"product_specification": 2, "technical_design": 2, "code_review": 3, "qa_defect_repair": 3},
+      "production_actions": "simulated_only"
+    }
+  },
+  "kpis": [
+    {"id": "acceptance_coverage", "target": 1.0},
+    {"id": "critical_security_findings", "target": 0},
+    {"id": "bounded_revision_compliance", "target": 1.0}
+  ]
+}
