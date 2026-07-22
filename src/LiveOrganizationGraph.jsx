@@ -26,6 +26,8 @@ const COLORS = {
   approval: 0xffbd59,
 };
 const VIEW_STORAGE_KEY = "javis.organizationGraph.view.v1";
+const AGENT_RING_RADIUS_FACTOR = 1.42;
+const ACTIVE_RING_SCALE = 1.12;
 
 function loadViewState() {
   try {
@@ -155,7 +157,7 @@ function labelSprite(text, color) {
     }),
   );
   sprite.scale.set(0.86, 0.13, 1);
-  sprite.position.y = -0.24;
+  sprite.position.y = -0.29;
   sprite.userData.texture = texture;
   sprite.userData.renderLabel = (value) => {
     context.clearRect(0, 0, canvas.width, canvas.height);
@@ -414,7 +416,12 @@ function ThreeOrganizationGraph({
         group.add(labelSprite(node.label, color));
       if (node.kind === "agent") {
         const ring = new THREE.Mesh(
-          new THREE.TorusGeometry(radius * 1.9, 0.012, 6, 48),
+          new THREE.TorusGeometry(
+            radius * AGENT_RING_RADIUS_FACTOR,
+            0.006,
+            6,
+            48,
+          ),
           new THREE.MeshBasicMaterial({
             color,
             transparent: true,
@@ -622,7 +629,10 @@ function ThreeOrganizationGraph({
     const animate = (now) => {
       animationId = requestAnimationFrame(animate);
       const time = (now - started) / 1000;
-      const deltaTime = Math.min(0.05, Math.max(0, (now - previousFrame) / 1000));
+      const deltaTime = Math.min(
+        0.05,
+        Math.max(0, (now - previousFrame) / 1000),
+      );
       previousFrame = now;
       const state = activityRef.current;
       const targetEnergy =
@@ -635,7 +645,8 @@ function ThreeOrganizationGraph({
               : state === "speaking"
                 ? 1.6
                 : 1;
-      visualEnergy += (targetEnergy - visualEnergy) * Math.min(1, deltaTime * 4);
+      visualEnergy +=
+        (targetEnergy - visualEnergy) * Math.min(1, deltaTime * 4);
       const energy = visualEnergy;
       if (!reduceMotion) motionTime += deltaTime * energy;
       const activeColor = activityColors[state] || activityColors.idle;
@@ -648,9 +659,7 @@ function ThreeOrganizationGraph({
       coreAura.material.color.lerp(activeColor, 0.06);
       coreAura.material.opacity =
         0.075 + (energy - 1) * 0.07 + Math.max(0, Math.sin(time * 2.8)) * 0.025;
-      coreAura.scale.setScalar(
-        1 + Math.sin(motionTime * 1.6) * 0.1 * energy,
-      );
+      coreAura.scale.setScalar(1 + Math.sin(motionTime * 1.6) * 0.1 * energy);
       signals.material.color.lerp(activeColor, 0.08);
       signals.material.size = 0.035 + (energy - 1) * 0.018;
       callosum.material.opacity =
@@ -664,8 +673,7 @@ function ThreeOrganizationGraph({
           const angle = orbit.angle + motionTime * orbit.speed;
           item.position.set(
             Math.cos(angle) * orbit.radius,
-            orbit.y +
-              Math.sin(motionTime * 0.45 + item.userData.phase) * 0.08,
+            orbit.y + Math.sin(motionTime * 0.45 + item.userData.phase) * 0.08,
             Math.sin(angle) * orbit.radius * 0.72,
           );
         }
@@ -857,14 +865,14 @@ function ThreeOrganizationGraph({
           active ? 0xffffff : planned ? 0x9a70ff : item.userData.baseColor,
         );
         item.userData.processRing.material.opacity = active
-          ? 1
+          ? 0.62
           : planned
             ? 0.38
             : completed
               ? 0.08
               : 0.22;
         item.userData.processRing.scale.setScalar(
-          active ? 1.65 : planned ? 1.08 : 1,
+          active ? ACTIVE_RING_SCALE : planned ? 1.04 : 1,
         );
       }
     });
@@ -995,7 +1003,9 @@ function LiveOrganizationGraph({
     [edges, sceneNodes],
   );
   const selected = augmented.nodes.find((node) => node.id === selectedId);
-  const interactiveNodes = positioned.filter((node) => node.status !== "hidden");
+  const interactiveNodes = positioned.filter(
+    (node) => node.status !== "hidden",
+  );
   const toggleKind = (kind) =>
     setVisibleKinds((current) => {
       const next = new Set(current);

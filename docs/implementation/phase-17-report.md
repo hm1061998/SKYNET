@@ -26,6 +26,8 @@ Runtime skill projection now uses eight stable hidden mesh slots and a stable pr
 
 Motion no longer derives positions from absolute elapsed time multiplied by the current activity energy. A clamped delta-time integrator advances a continuous motion clock, while activity energy eases toward its target. Chat transitions such as thinking-to-working can change animation speed and color without discontinuously relocating every orbiting node or neural signal.
 
+Agent activity rings now use a tighter radius, thinner geometry, lower active opacity and restrained active scaling. Labels sit below the ring footprint so the active-state indicator no longer obscures agent names at typical camera angles.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.
