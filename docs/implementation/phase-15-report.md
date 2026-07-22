@@ -6,6 +6,8 @@ Replaced the columnar 3D organization chart with a living neural-brain visualiza
 
 Visual refinement based on operator review now matches Chat mode more closely: the anatomical cortex uses 950 luminous particles over the fiber substrate, the camera frames the brain as the primary subject, nothing is selected on initial load, task labels are suppressed, and artifact detail stays in the inspector/list instead of crowding the canvas. Only AI entities and approval junctions retain compact in-scene labels.
 
+The two wireframe ellipsoid shells were removed after visual review. Hemisphere form now comes entirely from the particle cortex and dendrite network. A subtle animated corpus-callosum arc and seven curved neural bridges provide central structure without enclosing the brain in artificial oval geometry.
+
 ## 2. Architecture decisions
 
 - Preserved `/api/v1/topology`; visualization semantics changed without changing the domain contract.

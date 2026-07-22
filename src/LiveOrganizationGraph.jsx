@@ -88,12 +88,16 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
     scene.add(new THREE.AmbientLight(0x79bfff, .7));
     const key = new THREE.PointLight(0x50f6c8, 18, 25); key.position.set(0, 1, 5); scene.add(key);
 
-    const brainShell = new THREE.Group();
-    [-1, 1].forEach((side) => {
-      const lobe = new THREE.Mesh(new THREE.SphereGeometry(1.72, 28, 20), new THREE.MeshBasicMaterial({ color: side < 0 ? 0x4fe3ff : 0x806cff, wireframe: true, transparent: true, opacity: .018 }));
-      lobe.scale.set(.72, 1, .82); lobe.position.x = side * .72; brainShell.add(lobe);
-    });
-    graph.add(brainShell);
+    const neuralBridge = new THREE.Group();
+    const callosum = new THREE.Mesh(new THREE.TorusGeometry(.62, .012, 6, 72, Math.PI * 1.72), new THREE.MeshBasicMaterial({ color: 0x50f6c8, transparent: true, opacity: .18, blending: THREE.AdditiveBlending }));
+    callosum.rotation.set(0, Math.PI / 2, -.15); neuralBridge.add(callosum);
+    for (let index = 0; index < 7; index += 1) {
+      const y = -1.2 + index * .4;
+      const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(-1.15, y, Math.sin(index) * .28), new THREE.Vector3(0, y * .55, .45 + Math.cos(index) * .12), new THREE.Vector3(1.15, y, -Math.sin(index) * .28));
+      const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(30));
+      neuralBridge.add(new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: index % 2 ? 0x4fe3ff : 0x8a70ff, transparent: true, opacity: .12, blending: THREE.AdditiveBlending })));
+    }
+    graph.add(neuralBridge);
 
     const cortexPositions = new Float32Array(950 * 3);
     for (let index = 0; index < 950; index += 1) {
@@ -178,7 +182,7 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
     const observer = new ResizeObserver(resize); observer.observe(host); resize();
 
     let animationId; const started = performance.now();
-    const animate = (now) => { animationId = requestAnimationFrame(animate); const time = (now - started) / 1000; camera.position.z += (targetZoom - camera.position.z) * .1; if (!dragging) graph.rotation.y += .0008; core.rotation.x = time * .18; core.rotation.y = time * .28; core.scale.setScalar(1 + Math.sin(time * 2.4) * .07); coreAura.scale.setScalar(1 + Math.sin(time * 1.6) * .1); brainShell.rotation.y = Math.sin(time * .22) * .035; const signalPositions = signalGeometry.attributes.position; for (let index = 0; index < signalCount; index += 1) { const curve = signalCurves[index % Math.max(signalCurves.length, 1)]; const point = curve ? curve.getPoint((time * (.09 + index % 4 * .015) + index / signalCount) % 1) : new THREE.Vector3(); signalPositions.setXYZ(index, point.x, point.y, point.z); } signalPositions.needsUpdate = true; nodeMeshes.forEach((item) => { const pulse = .5 + Math.sin(time * 2.2 + item.userData.phase) * .5; item.userData.core.rotation.x += .006; item.userData.core.rotation.y += .01; item.userData.halo.scale.setScalar(1 + pulse * (item.userData.worker ? .28 : .16)); }); renderer.render(scene, camera); };
+    const animate = (now) => { animationId = requestAnimationFrame(animate); const time = (now - started) / 1000; camera.position.z += (targetZoom - camera.position.z) * .1; if (!dragging) graph.rotation.y += .0008; core.rotation.x = time * .18; core.rotation.y = time * .28; core.scale.setScalar(1 + Math.sin(time * 2.4) * .07); coreAura.scale.setScalar(1 + Math.sin(time * 1.6) * .1); callosum.material.opacity = .14 + Math.max(0, Math.sin(time * 2.1)) * .1; neuralBridge.rotation.z = Math.sin(time * .3) * .018; const signalPositions = signalGeometry.attributes.position; for (let index = 0; index < signalCount; index += 1) { const curve = signalCurves[index % Math.max(signalCurves.length, 1)]; const point = curve ? curve.getPoint((time * (.09 + index % 4 * .015) + index / signalCount) % 1) : new THREE.Vector3(); signalPositions.setXYZ(index, point.x, point.y, point.z); } signalPositions.needsUpdate = true; nodeMeshes.forEach((item) => { const pulse = .5 + Math.sin(time * 2.2 + item.userData.phase) * .5; item.userData.core.rotation.x += .006; item.userData.core.rotation.y += .01; item.userData.halo.scale.setScalar(1 + pulse * (item.userData.worker ? .28 : .16)); }); renderer.render(scene, camera); };
     animationId = requestAnimationFrame(animate);
     return () => { viewStateRef.current = { rotationX: graph.rotation.x, rotationY: graph.rotation.y, zoom: targetZoom }; runtimeRef.current = null; cancelAnimationFrame(animationId); observer.disconnect(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('wheel', wheel); dispose(graph); renderer.dispose(); renderer.domElement.remove(); };
   }, [nodes, edges, onSelect, debugLinks]);

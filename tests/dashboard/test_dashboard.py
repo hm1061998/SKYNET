@@ -126,6 +126,9 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("cortexPositions", graph)
         self.assertIn("node.kind !== 'artifact'", graph)
         self.assertIn("useState('')", graph)
+        self.assertIn("neuralBridge", graph)
+        self.assertIn("callosum", graph)
+        self.assertNotIn("SphereGeometry(1.72", graph)
 
     def test_server_keeps_legacy_and_v1_routes(self):
         server = (ROOT / "server.py").read_text(encoding="utf-8")
