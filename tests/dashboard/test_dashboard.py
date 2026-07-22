@@ -110,6 +110,8 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Focus graph", organization)
         self.assertIn("Hide chat", organization)
         self.assertIn("chat-hidden", organization)
+        self.assertIn("graphTyping", organization)
+        self.assertIn("activity={graphTyping", organization)
 
     def test_live_graph_exposes_operational_interactions(self):
         graph = (ROOT / "src" / "LiveOrganizationGraph.jsx").read_text(encoding="utf-8")
@@ -119,6 +121,9 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("Keyboard entity list", graph)
         self.assertIn("Close inspector", graph)
         self.assertIn("Drag to orbit", graph)
+        self.assertIn("Collective mind thinking", graph)
+        self.assertIn("activityRef", graph)
+        self.assertIn("state === 'thinking'", graph)
         self.assertIn("THREE.WebGLRenderer", graph)
         self.assertIn("THREE.Raycaster", graph)
         self.assertIn("3D rendering is unavailable", graph)

@@ -75,9 +75,13 @@ function PlanCard({ plan, onApprove, onReject }) {
   );
 }
 
-export default function ConversationPanel({ controller }) {
+export default function ConversationPanel({ controller, onInputActivity }) {
   const [input, setInput] = useState("");
   const transcriptRef = useRef(null);
+  useEffect(() => {
+    onInputActivity?.(Boolean(input.trim()));
+    return () => onInputActivity?.(false);
+  }, [input, onInputActivity]);
   useEffect(() => {
     const el = transcriptRef.current;
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 140)
