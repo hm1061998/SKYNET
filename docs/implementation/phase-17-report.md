@@ -20,6 +20,8 @@ Graph view state is continuously synchronized during pointer and wheel interacti
 
 The React render boundary now isolates the live graph from transcript-only controller updates. Both the graph shell and Three.js host are memoized; a semantic comparator admits only topology, activity, active-role, workflow, skill-set or task callback changes, and the task callback is stable through `useCallback`. Streaming chat logs that do not change those inputs no longer execute graph render work.
 
+Active-role contrast is now intentionally asymmetric: the active agent uses full opacity, 6.5 emissive intensity, a larger white ring and stronger halo; planned agents use 30% core opacity, low emissive intensity and a thin purple ring; completed agents recede further. Only handoff/assignment edges adjacent to the active agent remain bright, while future workflow edges stay at background opacity.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.

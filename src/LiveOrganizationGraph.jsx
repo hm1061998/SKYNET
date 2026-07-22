@@ -242,9 +242,11 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       const edge = line.userData.edge;
       const active = edge.source === selectedId || edge.target === selectedId;
       const sourceState = runtime.nodeMeshes.get(edge.source)?.userData.processState;
+      const targetState = runtime.nodeMeshes.get(edge.target)?.userData.processState;
       const workflowEdge = ['assigned_to', 'handoff_to', 'uses_skill'].includes(edge.kind) && (['active', 'planned'].includes(sourceState) || edge.kind === 'handoff_to');
+      const activeWorkflowEdge = sourceState === 'active' || targetState === 'active';
       line.material.color.setHex(active ? 0xdffcff : line.userData.baseColor);
-      line.material.opacity = active ? .92 : workflowEdge ? (sourceState === 'active' ? .82 : .24) : debugLinks ? .28 : 0;
+      line.material.opacity = active ? .92 : workflowEdge ? (activeWorkflowEdge ? .86 : .07) : debugLinks ? .2 : 0;
     });
   }, [selectedId, nodes, edges, debugLinks]);
 
@@ -259,11 +261,12 @@ function ThreeOrganizationGraph({ nodes, edges, selectedId, onSelect, debugLinks
       const processState = node.processState || 'idle';
       item.userData.processState = processState;
       const active = processState === 'active'; const planned = processState === 'planned'; const completed = processState === 'completed';
-      item.scale.setScalar(id === selectedId ? 1.22 : active ? 1.34 : planned ? 1.08 : completed ? .88 : 1);
-      item.userData.core.material.emissiveIntensity = active ? 5.5 : planned ? 3 : attention ? 3.8 : completed ? 1.15 : 2.1;
-      item.userData.core.material.opacity = completed ? .58 : 1; item.userData.core.material.transparent = completed;
-      item.userData.halo.material.opacity = id === selectedId ? .34 : active ? .32 : planned ? .14 : attention ? .14 : completed ? .025 : .08;
-      if (item.userData.processRing) { item.userData.processRing.material.color.setHex(active ? 0xffffff : planned ? 0x9a70ff : item.userData.baseColor); item.userData.processRing.material.opacity = active ? 1 : planned ? .72 : completed ? .18 : .4; item.userData.processRing.scale.setScalar(active ? 1.45 : planned ? 1.15 : 1); }
+      item.scale.setScalar(id === selectedId ? 1.22 : active ? 1.5 : planned ? .94 : completed ? .82 : 1);
+      item.userData.core.material.emissiveIntensity = active ? 6.5 : planned ? .65 : attention ? 3.8 : completed ? .45 : 1.6;
+      item.userData.core.material.opacity = active ? 1 : planned ? .3 : completed ? .22 : .72; item.userData.core.material.transparent = !active;
+      item.userData.halo.material.opacity = id === selectedId ? .34 : active ? .42 : planned ? .025 : attention ? .14 : completed ? .012 : .05;
+      if (item.userData.label) item.userData.label.material.opacity = id === selectedId || active ? 1 : planned ? .32 : completed ? .18 : .42;
+      if (item.userData.processRing) { item.userData.processRing.material.color.setHex(active ? 0xffffff : planned ? 0x9a70ff : item.userData.baseColor); item.userData.processRing.material.opacity = active ? 1 : planned ? .38 : completed ? .08 : .22; item.userData.processRing.scale.setScalar(active ? 1.65 : planned ? 1.08 : 1); }
     });
   }, [nodes, selectedId, debugLinks]);
 
