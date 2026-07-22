@@ -13,6 +13,13 @@ const STATUS = {
   working: { label: 'Đang thực thi…', color: [255, 150, 80] }
 };
 
+const formatElapsed = (milliseconds) => {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 export default function App() {
   const controller = useAgentController();
   const current = STATUS[controller.status] || STATUS.idle;
@@ -27,6 +34,11 @@ export default function App() {
           <span className="dot" style={{ background: dotColor, boxShadow: `0 0 10px ${dotColor}` }} />
           <span>{current.label}</span>
         </div>
+        {controller.executionActive && (
+          <div className="execution-timer" aria-live="polite">
+            Thời gian xử lý <strong>{formatElapsed(controller.executionElapsedMs)}</strong>
+          </div>
+        )}
       </header>
       <div className="badge" id="badge">…</div>
       <ModelSettings />

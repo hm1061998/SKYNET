@@ -27,12 +27,34 @@ export function useAgentController() {
   const [messages, setMessages] = useState([]);
   const [status, setStatusValue] = useState("idle");
   const [busy, setBusy] = useState(false);
+  const [executionStartedAt, setExecutionStartedAt] = useState(null);
+  const [executionElapsedMs, setExecutionElapsedMs] = useState(0);
   const [ttsOn, setTtsOn] = useState(true);
   const [micOn, setMicOn] = useState(false);
   const [micArmed, setMicArmed] = useState(false);
   const [hint, setHint] = useState("");
   const voiceRef = useRef(null);
   const sendRef = useRef(null);
+
+  const startExecutionTimer = useCallback(() => {
+    setExecutionElapsedMs(0);
+    setExecutionStartedAt(Date.now());
+  }, []);
+  const stopExecutionTimer = useCallback(() => {
+    setExecutionStartedAt((startedAt) => {
+      if (startedAt) setExecutionElapsedMs(Date.now() - startedAt);
+      return null;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!executionStartedAt) return undefined;
+    const timer = window.setInterval(
+      () => setExecutionElapsedMs(Date.now() - executionStartedAt),
+      250,
+    );
+    return () => window.clearInterval(timer);
+  }, [executionStartedAt]);
 
   const setStatus = useCallback((next) => {
     setStatusValue(next);
@@ -66,6 +88,7 @@ export function useAgentController() {
 
   const finishTask = useCallback(
     (result, planId, task) => {
+      stopExecutionTimer();
       if (result?.needs_input?.length) {
         visual({ type: "flash", color: [255, 200, 90] });
         visual({ type: "task", task, status: "pending" });
@@ -97,11 +120,12 @@ export function useAgentController() {
         ),
       );
     },
-    [addText, speak],
+    [addText, speak, stopExecutionTimer],
   );
 
   const approvePlan = useCallback(
     async (plan) => {
+      startExecutionTimer();
       setBusy(true);
       setStatus("working");
       visual({ type: "task", task: plan.task, status: "running" });
@@ -163,7 +187,7 @@ export function useAgentController() {
         );
       }
     },
-    [finishTask, setStatus],
+    [finishTask, setStatus, startExecutionTimer],
   );
 
   const rejectPlan = useCallback(
@@ -192,6 +216,7 @@ export function useAgentController() {
         label: "Phân tích yêu cầu và tìm hướng trả lời…",
       });
       addText(text, "me");
+      startExecutionTimer();
       setBusy(true);
       setStatus("thinking");
       try {
@@ -208,6 +233,7 @@ export function useAgentController() {
           };
           setMessages((current) => [...current, plan]);
           visual({ type: "plan-ready" });
+          stopExecutionTimer();
           setBusy(false);
           setStatus("idle");
         } else {
@@ -220,6 +246,7 @@ export function useAgentController() {
             kind: "chat",
           });
           addText(reply);
+          stopExecutionTimer();
           speak(reply);
         }
       } catch (error) {
@@ -230,11 +257,12 @@ export function useAgentController() {
           status: "error",
         });
         addText(`Lỗi kết nối: ${error.message}`);
+        stopExecutionTimer();
         setBusy(false);
         setStatus("idle");
       }
     },
-    [addText, busy, setStatus, speak],
+    [addText, busy, setStatus, speak, startExecutionTimer, stopExecutionTimer],
   );
   sendRef.current = send;
 
@@ -272,6 +300,8 @@ export function useAgentController() {
     messages,
     status,
     busy,
+    executionElapsedMs,
+    executionActive: Boolean(executionStartedAt),
     ttsOn,
     micOn,
     micArmed,

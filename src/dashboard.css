@@ -123,6 +123,43 @@ body {
   box-shadow: 0 0 10px var(--teal);
   transition: 0.4s;
 }
+.execution-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 5px 9px;
+  border: 1px solid rgba(79, 227, 255, .22);
+  border-radius: 999px;
+  color: #a9cbe2;
+  background: rgba(4, 13, 29, .72);
+  box-shadow: 0 0 16px rgba(79, 227, 255, .08);
+  font: 10px/1 Consolas, monospace;
+  letter-spacing: .04em;
+}
+.execution-timer strong {
+  color: var(--teal);
+  font-size: 11px;
+}
+.node-detail {
+  position: absolute;
+  left: 24px;
+  bottom: 122px;
+  z-index: 6;
+  width: min(360px, calc(100% - 48px));
+  padding: 15px 38px 15px 16px;
+  border: 1px solid rgba(79, 227, 255, .3);
+  border-radius: 12px;
+  color: var(--text);
+  background: rgba(5, 12, 28, .94);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .38), 0 0 22px rgba(79, 227, 255, .09);
+  backdrop-filter: blur(10px);
+}
+.node-detail[hidden] { display: none; }
+.node-detail strong { display: block; margin-bottom: 7px; color: var(--teal); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
+.node-detail p { margin: 0; color: #d8ecfb; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.node-detail-close { position: absolute; top: 8px; right: 10px; width: 24px; height: 24px; border: 0; border-radius: 50%; color: var(--ink); background: transparent; cursor: pointer; font-size: 20px; line-height: 1; }
+.node-detail-close:hover { color: var(--text); background: rgba(79, 227, 255, .12); }
 
 .badge {
   position: absolute;

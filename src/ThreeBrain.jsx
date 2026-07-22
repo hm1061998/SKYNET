@@ -149,6 +149,11 @@ function makeLabel(stage, text, kind = "skill") {
   return el;
 }
 
+function compactNodeLabel(text, limit = 28) {
+  const value = String(text || "Node").replace(/\s+/g, " ").trim();
+  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
+}
+
 function createSatelliteNode(color, index) {
   // Skill nodes are deliberately rendered as luminous points rather than solids.
   const geometry = new THREE.SphereGeometry(0.052, 18, 12);
@@ -351,9 +356,32 @@ export default function ThreeBrain() {
     let dragging = false;
     let px = 0;
     let py = 0;
+    let dragDistance = 0;
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
     const minCameraZ = 4.15;
     const maxCameraZ = 10.5;
     let targetCameraZ = camera.position.z;
+
+    const detailPanel = document.createElement("aside");
+    detailPanel.className = "node-detail";
+    detailPanel.hidden = true;
+    const detailTitle = document.createElement("strong");
+    const detailText = document.createElement("p");
+    const closeDetail = document.createElement("button");
+    closeDetail.type = "button";
+    closeDetail.className = "node-detail-close";
+    closeDetail.textContent = "×";
+    closeDetail.setAttribute("aria-label", "Đóng chi tiết node");
+    closeDetail.addEventListener("click", () => { detailPanel.hidden = true; });
+    detailPanel.append(closeDetail, detailTitle, detailText);
+    host.appendChild(detailPanel);
+
+    const showDetail = (item) => {
+      detailTitle.textContent = item.kind === "task" ? "Yêu cầu đang xử lý" : "Kỹ năng";
+      detailText.textContent = item.detail || item.name || "Không có thông tin chi tiết.";
+      detailPanel.hidden = false;
+    };
 
     const clearSkills = () => {
       skillObjects.forEach(({ mesh, orbitLine, label }) => {
@@ -383,9 +411,11 @@ export default function ThreeBrain() {
         const orbit = makeOrbit(position, index, 0.09 + (index % 5) * 0.012);
         const orbitLine = createLocalOrbitLine(orbit, color);
         graph.add(mesh, orbitLine);
-        const label = makeLabel(host, name);
+        const label = makeLabel(host, compactNodeLabel(name, 22));
         skillObjects.push({
           name,
+          detail: name,
+          kind: "skill",
           mesh,
           orbitLine,
           label,
@@ -526,6 +556,7 @@ export default function ThreeBrain() {
       skill.label.classList.add("active");
       skill.label.dataset.phase = detail.phase;
       skill.label.textContent = `${detail.phase === "active" ? "●" : detail.phase === "complete" ? "✓" : detail.phase === "error" ? "×" : "○"} ${detail.skill}`;
+      skill.label.textContent = `${detail.phase === "active" ? "●" : detail.phase === "complete" ? "✓" : detail.phase === "error" ? "×" : "○"} ${compactNodeLabel(detail.skill, 22)}`;
       rebuildActivityLinks();
       rebuildTaskLinks(detail.task);
     };
@@ -766,10 +797,12 @@ export default function ThreeBrain() {
             opacity: 0.42,
           }),
         );
-        const label = makeLabel(host, detail.task || "Task", "task");
+        const label = makeLabel(host, compactNodeLabel(detail.task || "Task", 34), "task");
         graph.add(mesh, ring, orbitLine, links);
         task = {
           name: detail.task,
+          detail: detail.task,
+          kind: "task",
           mesh,
           ring,
           orbitLine,
@@ -793,7 +826,9 @@ export default function ThreeBrain() {
       task.ring.material.color.setHex(colors[0]);
       task.orbitLine.material.color.setHex(colors[0]);
       task.label.dataset.status = detail.status;
+      task.detail = detail.task;
       task.label.textContent = `${detail.status === "running" ? "● " : detail.status === "done" ? "✓ " : detail.status === "error" ? "× " : "○ "}${detail.task}`;
+      task.label.textContent = `${detail.status === "running" ? "● " : detail.status === "done" ? "✓ " : detail.status === "error" ? "× " : "○ "}${compactNodeLabel(detail.task, 34)}`;
       if (detail.status === "done" || detail.status === "error")
         window.setTimeout(() => removeTask(task), 5000);
     };
@@ -842,10 +877,12 @@ export default function ThreeBrain() {
       dragging = true;
       px = event.clientX;
       py = event.clientY;
+      dragDistance = 0;
       renderer.domElement.setPointerCapture(event.pointerId);
     };
     const pointerMove = (event) => {
       if (!dragging) return;
+      dragDistance += Math.hypot(event.clientX - px, event.clientY - py);
       graph.rotation.y += (event.clientX - px) * 0.006;
       graph.rotation.x = THREE.MathUtils.clamp(
         graph.rotation.x + (event.clientY - py) * 0.004,
@@ -855,8 +892,19 @@ export default function ThreeBrain() {
       px = event.clientX;
       py = event.clientY;
     };
-    const pointerUp = () => {
+    const pointerUp = (event) => {
       dragging = false;
+      if (dragDistance > 6) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const items = [...taskObjects, ...skillObjects];
+      const hit = raycaster.intersectObjects(items.map((item) => item.mesh), true)[0];
+      const selected = hit && items.find((item) => item.mesh === hit.object || item.mesh.children.includes(hit.object));
+      if (selected) showDetail(selected);
     };
     const onWheel = (event) => {
       event.preventDefault();
@@ -927,12 +975,10 @@ export default function ThreeBrain() {
       key.intensity += (12 * energy - key.intensity) * 0.04;
       skillObjects.forEach((item) => {
         const isCurrent = item.name === currentSkillName;
-        const activityPulse = isCurrent
-          ? 0.55 + Math.max(0, Math.sin(time * 7)) * 0.45
-          : item.activity * 0.22;
-        moveOnOrbit(item, time, isCurrent ? 1 : item.activity);
+        // Activity is communicated by the halo, not by a distracting shake.
+        moveOnOrbit(item, time, item.activity * 0.12);
         item.mesh.scale.setScalar(
-          1 + Math.sin(time * 2.2 + item.phase) * 0.18 + activityPulse,
+          1 + Math.sin(time * 2.2 + item.phase) * 0.025 + item.activity * 0.04,
         );
         const satellite = item.mesh.userData.satellite;
         if (satellite) {
@@ -1049,6 +1095,7 @@ export default function ThreeBrain() {
       renderer.domElement.removeEventListener("wheel", onWheel);
       renderer.domElement.remove();
       host.querySelectorAll(".graph-label").forEach((label) => label.remove());
+      detailPanel.remove();
     };
   }, []);
 
