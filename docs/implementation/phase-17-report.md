@@ -10,6 +10,8 @@ The organization graph now occupies the entire viewport in organization mode, wi
 
 The redundant visible graph title was removed, the filter toolbar moved into its space, and organization-mode composer positioning now explicitly resets Chat mode's centered transform so all four controls remain inside the chat panel.
 
+The graph content no longer creates a low-level stacking context in fullscreen mode. Entity detail cards use a dedicated layer above the conversation panel, while the graph canvas, toolbar and footer retain their lower interaction layers.
+
 ## 2. Architecture decisions
 
 - Keep layout preferences in the dashboard shell instead of the graph runtime.

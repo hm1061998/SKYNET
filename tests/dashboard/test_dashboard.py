@@ -112,6 +112,8 @@ class DashboardSourceSmokeTests(unittest.TestCase):
         self.assertIn("chat-hidden", organization)
         self.assertIn("graphTyping", organization)
         self.assertIn("activity={graphTyping", organization)
+        styles = (ROOT / "src" / "dashboard.css").read_text(encoding="utf-8")
+        self.assertIn(".ops-layout.graph-mode .graph-inspector { z-index:12; }", styles)
 
     def test_live_graph_exposes_operational_interactions(self):
         graph = (ROOT / "src" / "LiveOrganizationGraph.jsx").read_text(encoding="utf-8")
