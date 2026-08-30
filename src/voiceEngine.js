@@ -175,10 +175,14 @@ export function createVoiceEngine({
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = await waitForVietnameseVoice();
-    if (voice) utterance.voice = voice;
+    if (!voice) {
+      onError?.("Không tìm thấy giọng tiếng Việt. TTS server sẽ tự thử lại sau ít giây.");
+      return done();
+    }
+    utterance.voice = voice;
     // Keep the requested language Vietnamese even when the OS has no explicit
     // Vietnamese voice; this lets the browser choose its vi-VN fallback.
-    utterance.lang = "vi-VN";
+    utterance.lang = voice.lang || "vi-VN";
     utterance.rate = 1.05;
     utterance.onboundary = () => visual({ type: "voice-pulse", strength: 1 });
     utterance.onend = done;

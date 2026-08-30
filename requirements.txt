@@ -15,3 +15,4 @@ openai>=1.0.0            # dùng cho provider: openai  VÀ  deepseek (base_url)
 # scenedetect     -> detect_scenes   (pip install scenedetect)
 # pillow          -> resize/convert ảnh (nếu skill sinh ra cần)
 edge-tts>=6.1.12
+gTTS>=2.5.4

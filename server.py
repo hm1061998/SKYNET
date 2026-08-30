@@ -126,6 +126,7 @@ def maybe_reload_code():
 
 TTS_VOICE = "vi-VN-HoaiMyNeural"
 TTS_RATE = "+15%"
+TTS_LAST_ENGINE = "unknown"
 
 
 def _tts_bytes(text: str, voice: str = TTS_VOICE, rate: str | None = None) -> bytes:
@@ -133,7 +134,10 @@ def _tts_bytes(text: str, voice: str = TTS_VOICE, rate: str | None = None) -> by
     try:
         import edge_tts
     except ImportError:
-        return _tts_bytes_via_cli(text, voice, rate or TTS_RATE)
+        try:
+            return _tts_bytes_via_cli(text, voice, rate or TTS_RATE)
+        except Exception:
+            return _tts_bytes_gtts(text)
     import asyncio
 
     async def _gen() -> bytes:
@@ -143,7 +147,30 @@ def _tts_bytes(text: str, voice: str = TTS_VOICE, rate: str | None = None) -> by
                 buf += chunk["data"]
         return buf
 
-    return asyncio.run(_gen())
+    global TTS_LAST_ENGINE
+    try:
+        audio = asyncio.run(_gen())
+        TTS_LAST_ENGINE = "edge-tts"
+        return audio
+    except Exception:
+        return _tts_bytes_gtts(text)
+
+
+def _tts_bytes_gtts(text: str) -> bytes:
+    """Vietnamese-only secondary engine for machines where Edge TTS is blocked."""
+    import io
+    try:
+        from gtts import gTTS
+    except ImportError as exc:
+        raise RuntimeError("Thiếu engine tiếng Việt gTTS; hãy cài requirements.txt") from exc
+    output = io.BytesIO()
+    gTTS(text=text, lang="vi", tld="com.vn", slow=False).write_to_fp(output)
+    audio = output.getvalue()
+    if not audio:
+        raise RuntimeError("gTTS không trả audio tiếng Việt")
+    global TTS_LAST_ENGINE
+    TTS_LAST_ENGINE = "gtts-vi"
+    return audio
 
 
 def _tts_bytes_via_cli(text: str, voice: str, rate: str) -> bytes:
@@ -180,6 +207,8 @@ def _tts_bytes_via_cli(text: str, voice: str, rate: str) -> bytes:
                     with open(audio_path, "rb") as stream:
                         audio = stream.read()
                     if audio:
+                        global TTS_LAST_ENGINE
+                        TTS_LAST_ENGINE = "edge-tts-cli"
                         return audio
                 errors.append((proc.stderr or proc.stdout or "edge-tts CLI lỗi")[-300:])
             except Exception as exc:
@@ -347,8 +376,9 @@ class Handler(BaseHTTPRequestHandler):
             # tự chẩn đoán TTS: mở http://127.0.0.1:8765/api/tts-check trên trình duyệt
             try:
                 audio = _tts_bytes("Xin chào, em là Hoài My.")
-                return self._json({"ok": True, "engine": "edge-tts",
-                                   "voice": "vi-VN-HoaiMyNeural", "bytes": len(audio)})
+                return self._json({"ok": True, "engine": TTS_LAST_ENGINE,
+                                   "voice": TTS_VOICE if TTS_LAST_ENGINE.startswith("edge") else "vi",
+                                   "bytes": len(audio)})
             except Exception as e:
                 print(f"[tts] LỖI: {e}")
                 return self._json({"ok": False, "error": str(e)})
