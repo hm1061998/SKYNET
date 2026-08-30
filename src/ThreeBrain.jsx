@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { AGENT_VISUAL_EVENT } from "./agentConfig.js";
 
 const PALETTES = {
@@ -11,15 +14,18 @@ const PALETTES = {
 };
 
 function brainPoint(index, count) {
-  const side = index % 2 ? 1 : -1;
-  const i = Math.floor(index / 2);
-  const n = Math.ceil(count / 2);
-  const phi = Math.acos(1 - (2 * (i + 0.5)) / n);
-  const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+  // One continuous Fibonacci field. The previous implementation forced every
+  // point into a left or right hemisphere and left an artificial vertical gap.
+  const safeCount = Math.max(count, 1);
+  const wrappedIndex = ((index % safeCount) + safeCount) % safeCount;
+  const normalized = (wrappedIndex + 0.5) / safeCount;
+  const phi = Math.acos(1 - 2 * normalized);
+  const theta = Math.PI * (3 - Math.sqrt(5)) * wrappedIndex;
+  const radialWave = 0.9 + Math.sin(theta * 2.7 + phi * 3.4) * 0.11;
   return new THREE.Vector3(
-    side * (0.34 + Math.abs(Math.sin(phi) * Math.cos(theta)) * 1.25),
-    Math.cos(phi) * 1.38,
-    Math.sin(phi) * Math.sin(theta) * 1.12,
+    Math.sin(phi) * Math.cos(theta) * 1.36 * radialWave,
+    Math.cos(phi) * 1.42 * (0.96 + Math.sin(theta * 1.9) * 0.04),
+    Math.sin(phi) * Math.sin(theta) * 1.18 * radialWave,
   );
 }
 
@@ -167,8 +173,8 @@ function createSatelliteNode(color, index) {
   const node = new THREE.Mesh(geometry, material);
   const haloMaterials = [];
   [
-    [0.12, 0.16],
-    [0.22, 0.045],
+    [0.085, 0.13],
+    [0.145, 0.032],
   ].forEach(([radius, opacity]) => {
     const haloMaterial = new THREE.MeshBasicMaterial({
       color,
@@ -198,21 +204,85 @@ function disposeObject(object) {
   });
 }
 
+function createHologramMaterial(color = 0x4fe3ff) {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uTime: { value: 0 },
+      uEnergy: { value: 1 },
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        vNormal = normalize(normalMatrix * normal);
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uTime;
+      uniform float uEnergy;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+      varying vec2 vUv;
+      void main() {
+        vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+        float fresnel = pow(1.0 - abs(dot(viewDirection, vNormal)), 2.35);
+        float scan = 0.48 + 0.52 * sin(vWorldPosition.y * 72.0 - uTime * 5.0);
+        float interference = 0.6 + 0.4 * sin((vUv.x + vUv.y) * 54.0 + uTime * 1.7);
+        float alpha = fresnel * (0.12 + scan * 0.10) + interference * 0.014;
+        gl_FragColor = vec4(uColor * (1.15 + fresnel * 1.8), alpha * uEnergy);
+      }
+    `,
+  });
+}
+
+function createEnergyRing(radius, color, rotation, opacity = 0.22) {
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(radius, 0.008, 6, 180),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  ring.rotation.set(...rotation);
+  return ring;
+}
+
 export default function ThreeBrain() {
   const hostRef = useRef(null);
 
   useEffect(() => {
     const host = hostRef.current;
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x02030a, 0.075);
+    scene.fog = new THREE.FogExp2(0x01040c, 0.065);
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 100);
-    camera.position.set(0, 0.15, 7.2);
+    camera.position.set(0, 0.12, 5.15);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(0x02030a, 0);
+    renderer.setClearColor(0x01040c, 0);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.96;
     host.prepend(renderer.domElement);
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.92, 0.58, 0.3);
+    composer.addPass(bloomPass);
 
     const graph = new THREE.Group();
     graph.rotation.x = -0.12;
@@ -223,13 +293,43 @@ export default function ThreeBrain() {
     key.position.set(0, 0, 2.5);
     scene.add(ambient, key);
 
+    // Distant particles make the graph read as a volumetric projection instead
+    // of an isolated object on a flat background.
+    const starCount = 720;
+    const starPositions = new Float32Array(starCount * 3);
+    for (let index = 0; index < starCount; index++) {
+      const radius = 3.2 + Math.random() * 7.5;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      starPositions.set(
+        [
+          radius * Math.sin(phi) * Math.cos(theta),
+          radius * Math.cos(phi) * 0.72,
+          radius * Math.sin(phi) * Math.sin(theta),
+        ],
+        index * 3,
+      );
+    }
+    const starGeometry = new THREE.BufferGeometry();
+    starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+    const starMaterial = new THREE.PointsMaterial({
+      color: 0x2ac9ff,
+      size: 0.018,
+      transparent: true,
+      opacity: 0.34,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const starField = new THREE.Points(starGeometry, starMaterial);
+    scene.add(starField);
+
     const core = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.34, 3),
+      new THREE.IcosahedronGeometry(0.22, 2),
       new THREE.MeshBasicMaterial({
         color: 0x50f6c8,
         wireframe: true,
         transparent: true,
-        opacity: 0.42,
+        opacity: 0.24,
       }),
     );
     graph.add(core);
@@ -243,6 +343,138 @@ export default function ThreeBrain() {
       }),
     );
     graph.add(aura);
+
+    const hologramMaterial = createHologramMaterial();
+    const hologramShell = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(1.62, 3),
+      hologramMaterial,
+    );
+    hologramMaterial.wireframe = true;
+    hologramShell.scale.set(1.08, 0.9, 0.82);
+    // The shader is retained for state-reactive energy, but the closed shell is
+    // intentionally not mounted: a complete surface reads as a globe/cage.
+
+    // Dense, irregular plasma filaments are the visual body of the hologram.
+    // They deliberately avoid a spherical silhouette: every path bows, twists
+    // and crosses the core like the energy projections in the reference shot.
+    const plasmaPaths = [];
+    const plasmaVertices = [];
+    const plasmaCount = 280;
+    const plasmaClusters = [
+      { center: new THREE.Vector3(-0.58, 0.22, 0.08), radius: new THREE.Vector3(1.0, 0.92, 0.78) },
+      { center: new THREE.Vector3(0.48, 0.38, -0.08), radius: new THREE.Vector3(0.96, 0.86, 0.72) },
+      { center: new THREE.Vector3(0.14, -0.56, 0.12), radius: new THREE.Vector3(1.08, 0.7, 0.82) },
+      { center: new THREE.Vector3(0.82, -0.16, -0.34), radius: new THREE.Vector3(0.72, 0.62, 0.58) },
+    ];
+    const randomClusterPoint = (cluster, spread = 1) => {
+      const direction = new THREE.Vector3(
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+      ).normalize();
+      const distance = Math.pow(Math.random(), 0.62) * spread;
+      return cluster.center.clone().add(
+        direction.multiply(cluster.radius).multiplyScalar(distance),
+      );
+    };
+    for (let index = 0; index < plasmaCount; index++) {
+      const cluster = plasmaClusters[index % plasmaClusters.length];
+      const start = randomClusterPoint(cluster, 1.05);
+      const endCluster = Math.random() < 0.22
+        ? plasmaClusters[(index + 1 + (index % 2)) % plasmaClusters.length]
+        : cluster;
+      const end = randomClusterPoint(endCluster, 1.08);
+      const middle = start.clone().lerp(end, 0.5);
+      middle.add(randomClusterPoint(cluster, 0.7).sub(cluster.center).multiplyScalar(0.72));
+      if (index % 13 === 0) {
+        // A few long tendrils break the silhouette and prevent a round ball.
+        middle.multiplyScalar(1.28);
+        end.addScaledVector(end.clone().sub(cluster.center).normalize(), 0.75 + Math.random() * 0.7);
+      }
+      const curve = new THREE.QuadraticBezierCurve3(start, middle, end);
+      plasmaPaths.push(curve);
+      const points = curve.getPoints(9);
+      for (let point = 1; point < points.length; point++) {
+        plasmaVertices.push(
+          points[point - 1].x, points[point - 1].y, points[point - 1].z,
+          points[point].x, points[point].y, points[point].z,
+        );
+      }
+    }
+    const plasmaGeometry = new THREE.BufferGeometry();
+    plasmaGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(plasmaVertices, 3),
+    );
+    const plasmaMaterial = new THREE.LineBasicMaterial({
+      color: 0x35dfff,
+      transparent: true,
+      opacity: 0.17,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const plasmaField = new THREE.LineSegments(plasmaGeometry, plasmaMaterial);
+    const plasmaGlowMaterial = plasmaMaterial.clone();
+    plasmaGlowMaterial.color.setHex(0x087dbb);
+    plasmaGlowMaterial.opacity = 0.065;
+    const plasmaGlow = new THREE.LineSegments(plasmaGeometry, plasmaGlowMaterial);
+    plasmaGlow.scale.setScalar(1.025);
+    graph.add(plasmaGlow, plasmaField);
+
+    const plasmaSignalCount = 110;
+    const plasmaSignalPositions = new Float32Array(plasmaSignalCount * 3);
+    const plasmaSignalGeometry = new THREE.BufferGeometry();
+    plasmaSignalGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(plasmaSignalPositions, 3),
+    );
+    const plasmaSignalMaterial = new THREE.PointsMaterial({
+      color: 0xb6f8ff,
+      size: 0.038,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const plasmaSignals = new THREE.Points(plasmaSignalGeometry, plasmaSignalMaterial);
+    graph.add(plasmaSignals);
+
+    const orbitalRig = new THREE.Group();
+    const energyRings = [
+      createEnergyRing(1.86, 0x32dcff, [1.18, 0.22, 0.34], 0.16),
+      createEnergyRing(2.02, 0x13aee8, [0.48, 1.1, -0.38], 0.1),
+      createEnergyRing(1.66, 0x66ffe0, [1.42, -0.52, 1.18], 0.13),
+      createEnergyRing(2.22, 0xffaa32, [1.62, 0.18, -0.7], 0.08),
+    ];
+    orbitalRig.add(...energyRings);
+
+    const beamMaterial = new THREE.MeshBasicMaterial({
+      color: 0x22cfff,
+      transparent: true,
+      opacity: 0.009,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const energyBeam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.38, 1.05, 5.2, 48, 1, true),
+      beamMaterial,
+    );
+    energyBeam.position.y = -0.85;
+
+    const platform = new THREE.Mesh(
+      new THREE.RingGeometry(0.72, 2.55, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0x24bfe8,
+        transparent: true,
+        opacity: 0.018,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    platform.rotation.x = -Math.PI / 2;
+    platform.position.y = -2.18;
 
     const particleCount = 950;
     const particles = new Float32Array(particleCount * 3);
@@ -266,14 +498,13 @@ export default function ThreeBrain() {
     const cloud = new THREE.Points(particleGeo, particleMat);
     graph.add(cloud);
 
-    // Curved local dendrites form the anatomical substrate of both hemispheres.
+    // Curved local dendrites form one continuous, volumetric energy substrate.
     const fiberPositions = [];
     const fiberPaths = [];
     const fiberCount = 190;
     for (let i = 0; i < fiberCount; i++) {
       const from = brainPoint(i, fiberCount);
       const to = brainPoint((i + 7 + (i % 11)) % fiberCount, fiberCount);
-      if (Math.sign(from.x) !== Math.sign(to.x)) to.x *= -1;
       const control = from.clone().lerp(to, 0.5).multiplyScalar(0.72);
       control.z += Math.sin(i * 2.17) * 0.18;
       const curve = new THREE.QuadraticBezierCurve3(from, control, to);
@@ -331,6 +562,8 @@ export default function ThreeBrain() {
       }),
     );
     hemisphereBridge.rotation.set(0, Math.PI / 2, -0.15);
+    // Kept as an inner energy arc, no longer used to imply two hemispheres.
+    hemisphereBridge.scale.set(0.72, 0.72, 0.72);
     graph.add(hemisphereBridge);
 
     const taskSignal = new THREE.Mesh(
@@ -359,7 +592,7 @@ export default function ThreeBrain() {
     let dragDistance = 0;
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
-    const minCameraZ = 4.15;
+    const minCameraZ = 4.25;
     const maxCameraZ = 10.5;
     let targetCameraZ = camera.position.z;
 
@@ -868,6 +1101,8 @@ export default function ThreeBrain() {
       camera.aspect = width / Math.max(height, 1);
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+      composer.setSize(width, height);
+      bloomPass.setSize(width, height);
     };
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(host);
@@ -939,11 +1174,43 @@ export default function ThreeBrain() {
             : state === "listening"
               ? 1.2
               : 0.8;
+      bloomPass.strength += ((0.78 + energy * 0.13) - bloomPass.strength) * 0.045;
       const voiceWave =
         state === "speaking" ? Math.max(0, Math.sin(time * 11.5)) * 0.34 : 0;
       const voicePulse = Math.min(1.25, voiceWave + voiceImpulse);
       voiceImpulse *= 0.86;
       if (!dragging) graph.rotation.y += 0.0015 * energy;
+      hologramMaterial.uniforms.uTime.value = time;
+      hologramMaterial.uniforms.uEnergy.value = 0.28 + energy * 0.09 + voicePulse * 0.24;
+      hologramMaterial.uniforms.uColor.value.lerp(new THREE.Color(palette[1]), 0.035);
+      hologramShell.rotation.x = time * 0.018;
+      hologramShell.rotation.z = -time * 0.025;
+      plasmaField.rotation.y = Math.sin(time * 0.16) * 0.045;
+      plasmaGlow.rotation.y = plasmaField.rotation.y;
+      plasmaMaterial.color.lerp(new THREE.Color(palette[1]), 0.026);
+      plasmaMaterial.opacity = 0.13 + energy * 0.038 + voicePulse * 0.09;
+      plasmaGlowMaterial.opacity = 0.04 + energy * 0.018;
+      const plasmaSignalAttribute = plasmaSignalGeometry.attributes.position;
+      for (let index = 0; index < plasmaSignalCount; index++) {
+        const curve = plasmaPaths[(index * 23) % plasmaPaths.length];
+        const progress = (time * (0.09 + (index % 7) * 0.014) + index / plasmaSignalCount) % 1;
+        const point = curve.getPoint(progress);
+        plasmaSignalAttribute.setXYZ(index, point.x, point.y, point.z);
+      }
+      plasmaSignalAttribute.needsUpdate = true;
+      plasmaSignalMaterial.opacity = 0.42 + energy * 0.12 + voicePulse * 0.16;
+      orbitalRig.rotation.y = time * 0.055;
+      energyRings.forEach((ring, index) => {
+        ring.rotation.z += (index % 2 ? -1 : 1) * (0.0008 + index * 0.00035) * energy;
+        ring.material.opacity =
+          (index === 3 ? 0.08 : 0.13) + energy * 0.035 + Math.max(0, Math.sin(time * (1.1 + index * 0.17) + index)) * 0.08;
+      });
+      energyBeam.material.opacity = 0.006 + energy * 0.004 + voicePulse * 0.018;
+      energyBeam.scale.x = energyBeam.scale.z = 1 + Math.sin(time * 1.6) * 0.08;
+      platform.material.opacity = 0.008 + Math.max(0, Math.sin(time * 1.25)) * 0.012;
+      platform.rotation.z = time * 0.045;
+      starField.rotation.y = time * 0.006;
+      starMaterial.opacity = 0.25 + energy * 0.055;
       core.rotation.x = time * 0.22 * energy;
       core.rotation.y = time * 0.32 * energy;
       core.scale.setScalar(
@@ -1077,10 +1344,14 @@ export default function ThreeBrain() {
         );
         item.label.style.opacity =
           projected.z < 1 && projected.z > -1
-            ? String(isSemantic ? Math.max(0.86, depthOpacity) : depthOpacity)
+            ? String(
+                isSemantic
+                  ? Math.max(0.9, depthOpacity)
+                  : depthOpacity * (targetCameraZ < 6.2 ? 0.62 : 0.34),
+              )
             : "0";
       });
-      renderer.render(scene, camera);
+      composer.render();
     };
     animationId = requestAnimationFrame(animate);
 
@@ -1089,6 +1360,8 @@ export default function ThreeBrain() {
       window.removeEventListener(AGENT_VISUAL_EVENT, onVisual);
       resizeObserver.disconnect();
       renderer.dispose();
+      composer.dispose();
+      disposeObject(scene);
       renderer.domElement.removeEventListener("pointerdown", pointerDown);
       renderer.domElement.removeEventListener("pointermove", pointerMove);
       renderer.domElement.removeEventListener("pointerup", pointerUp);

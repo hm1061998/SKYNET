@@ -33,11 +33,33 @@ body {
   overflow: hidden;
   cursor: grab;
   touch-action: none;
-  background: radial-gradient(
-    circle at 50% 46%,
-    rgba(15, 28, 58, 0.55),
-    transparent 48%
-  );
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse at 50% 48%, rgba(0, 154, 224, 0.18) 0%, rgba(3, 20, 48, 0.38) 28%, transparent 62%),
+    radial-gradient(ellipse at 50% 100%, rgba(255, 139, 35, 0.07), transparent 42%),
+    linear-gradient(180deg, #01030a 0%, #020714 55%, #01030a 100%);
+}
+.brain-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.24;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(77, 226, 255, 0.035) 3px 4px);
+  mix-blend-mode: screen;
+  animation: hologram-scan 9s linear infinite;
+}
+.brain-stage::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(104deg, transparent 44%, rgba(58, 218, 255, 0.035) 49%, transparent 54%),
+    radial-gradient(circle at 50% 50%, transparent 20%, rgba(0, 0, 0, 0.58) 74%);
+  animation: hologram-sweep 7s ease-in-out infinite alternate;
 }
 .brain-stage:active {
   cursor: grabbing;
@@ -49,6 +71,18 @@ body {
   height: 100%;
   display: block;
 }
+@keyframes hologram-scan {
+  from { transform: translateY(-8px); }
+  to { transform: translateY(8px); }
+}
+@keyframes hologram-sweep {
+  from { transform: translateX(-4%); opacity: 0.5; }
+  to { transform: translateX(4%); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brain-stage::before,
+  .brain-stage::after { animation: none; }
+}
 .graph-label {
   position: absolute;
   left: 0;
@@ -58,14 +92,22 @@ body {
   padding: 3px 7px;
   border-radius: 8px;
   color: #bdefff;
-  background: rgba(3, 8, 20, 0.68);
-  border: 1px solid rgba(79, 227, 255, 0.16);
+  background: linear-gradient(90deg, rgba(2, 13, 31, 0.82), rgba(4, 26, 45, 0.58));
+  border: 1px solid rgba(79, 227, 255, 0.24);
   font:
     10px/1.2 Consolas,
     monospace;
   white-space: nowrap;
-  box-shadow: 0 0 12px rgba(79, 227, 255, 0.08);
-  transition: opacity 0.2s;
+  box-shadow: inset 0 0 9px rgba(79, 227, 255, 0.05), 0 0 16px rgba(79, 227, 255, 0.1);
+  backdrop-filter: blur(4px);
+  transition: opacity 0.22s, filter 0.22s;
+  filter: saturate(0.76);
+}
+.graph-label.active,
+.graph-label.task,
+.graph-label.thought,
+.graph-label.result {
+  filter: saturate(1.15);
 }
 .graph-label.task {
   color: #ffe3a6;
