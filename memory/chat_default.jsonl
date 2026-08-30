@@ -148,3 +148,6 @@
 {"role": "assistant", "content": "Mình nghe đây, bạn cần SKYNET giúp gì?", "ts": 1784710298.8681078}
 {"role": "user", "content": "mở ứng dụng word trên máy lên và tạo thử 1 file với tiêu đề : \"kiểm tra skill\" rồi lưu vào thư mục Documents", "ts": 1784710325.9703562}
 {"role": "assistant", "content": "(kế hoạch cho tác vụ: Mở ứng dụng Word, tạo file với tiêu đề 'kiểm tra skill' và lưu vào thư mục Documents.)", "ts": 1784710411.6949532}
+{"role": "user", "content": "test", "ts": 1788096930.0105467}
+{"role": "user", "content": "hi", "ts": 1788096944.6234295}
+{"role": "user", "content": "hi", "ts": 1788097638.4448295}

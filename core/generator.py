@@ -138,7 +138,7 @@ def validate(path) -> tuple[bool, str]:
 
     Trả (True, "") nếu hợp lệ; (False, "<lý do>") nếu không. KHÔNG chạy run().
     """
-    import importlib.util
+    import ast
     import py_compile
     from pathlib import Path
 
@@ -154,16 +154,21 @@ def validate(path) -> tuple[bool, str]:
     except Exception as e:
         return False, f"Lỗi biên dịch: {e}"
 
-    # 2) import + kiểm tra contract
+    # 2) kiểm tra contract tĩnh; tuyệt đối không import/execute generated code
     try:
-        spec = importlib.util.spec_from_file_location(f"validate_{path.stem}", path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        meta_node = None
+        has_run = False
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run":
+                has_run = True
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if any(isinstance(t, ast.Name) and t.id == "SKILL_META" for t in targets):
+                    meta_node = node.value
+        meta = ast.literal_eval(meta_node) if meta_node is not None else None
     except Exception as e:
-        return False, f"Lỗi khi import skill: {e}"
-
-    meta = getattr(mod, "SKILL_META", None)
-    run_fn = getattr(mod, "run", None)
+        return False, f"Không đọc được contract tĩnh của skill: {e}"
     if not isinstance(meta, dict):
         return False, "Thiếu SKILL_META (phải là dict)."
     if not meta.get("name"):
@@ -172,6 +177,6 @@ def validate(path) -> tuple[bool, str]:
         return False, "SKILL_META thiếu 'description' (mô tả ngắn)."
     if not isinstance(meta.get("params", {}), dict):
         return False, "SKILL_META['params'] phải là dict."
-    if not callable(run_fn):
+    if not has_run:
         return False, "Thiếu hàm run(**kwargs)."
     return True, ""

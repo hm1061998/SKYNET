@@ -1,7 +1,7 @@
 # Skill Agent — phụ thuộc
 #
-# LLM SDK: chỉ cần cài của provider bạn dùng. Agent sẽ TỰ cài khi cần,
-# nên bạn có thể bỏ trống file này. Liệt kê ở đây cho tiện.
+# LLM SDK: chỉ cần cài provider bạn dùng. Runtime không tự cài package;
+# hãy cài file này trước khi khởi động agent.
 #
 openai>=1.0.0            # dùng cho provider: openai  VÀ  deepseek (base_url)
 # anthropic>=0.39.0      # provider: anthropic
@@ -14,3 +14,4 @@ openai>=1.0.0            # dùng cho provider: openai  VÀ  deepseek (base_url)
 # ffmpeg/ffprobe  -> get_video_info  (cài ở mức hệ điều hành)
 # scenedetect     -> detect_scenes   (pip install scenedetect)
 # pillow          -> resize/convert ảnh (nếu skill sinh ra cần)
+edge-tts>=6.1.12

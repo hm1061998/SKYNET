@@ -54,11 +54,13 @@ Chọn model cho từng vai trò trong `config.json` → `roles`:
 ```json
 "roles": {
   "chat": { "provider": "gemini",   "model": "gemini-2.0-flash" },
-  "work": { "provider": "deepseek", "model": "deepseek-reasoner" }
+  "work": { "provider": "deepseek", "model": "deepseek-reasoner" },
+  "verify": { "provider": "gemini", "model": "gemini-2.0-flash" }
 }
 ```
 
-`chat` và `work` có thể dùng provider khác nhau. File HTML kế hoạch được lưu trong thư mục `plans/`.
+`verify` là tùy chọn; nếu bỏ qua, nó kế thừa cấu hình `work`. Dùng verifier riêng
+giúp giảm thiên kiến model tự chấm kết quả do chính nó tạo ra.
 
 ## Cài đặt
 
@@ -68,17 +70,18 @@ pip install anthropic --break-system-packages
 pip install google-generativeai --break-system-packages
 ```
 
-## Cấu hình API key (config.json)
+## Cấu hình API key
 
-Mở `config.json`, chọn `provider` và dán API key vào provider tương ứng:
+Không lưu API key trực tiếp trong project. Đặt key bằng biến môi trường hoặc secret
+store của hệ điều hành; `config.json` chỉ giữ provider, model và base URL:
 
 ```json
 {
   "provider": "gemini",
-  "anthropic": { "api_key": "sk-ant-...", "model": "claude-sonnet-4-5" },
-  "gemini":    { "api_key": "AIza...",    "model": "gemini-2.0-flash" },
-  "openai":    { "api_key": "sk-...",     "model": "gpt-4o-mini" },
-  "deepseek":  { "api_key": "sk-...",     "model": "deepseek-chat",
+  "anthropic": { "model": "claude-sonnet-4-5" },
+  "gemini":    { "model": "gemini-2.0-flash" },
+  "openai":    { "model": "gpt-4o-mini" },
+  "deepseek":  { "model": "deepseek-chat",
                  "base_url": "https://api.deepseek.com" }
 }
 ```
@@ -86,14 +89,12 @@ Mở `config.json`, chọn `provider` và dán API key vào provider tương ứ
 Hỗ trợ 4 provider: **anthropic, gemini, openai, deepseek**. Chỉ cần điền key cho
 provider bạn dùng. Nếu để `api_key` trống, agent sẽ tự đọc từ biến môi trường
 (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`).
-SDK tương ứng được tự cài khi cần.
+SDK phải được cài trước khi khởi động; runtime không tự sửa môi trường Python.
 
 ## Chạy
 
 ```bash
-# Cách 1: dùng config.json (khuyến nghị) — không cần export gì
-
-# Cách 2: dùng biến môi trường
+# Key qua biến môi trường
 export ANTHROPIC_API_KEY="sk-..."
 # hoặc dùng Gemini:
 export GEMINI_API_KEY="..."
@@ -234,15 +235,31 @@ Phân biệt "lỗi code" và "lỗi dữ liệu" dựa vào cờ `_crashed` do 
 
 ## Tự phục hồi khi chạy lỗi
 
-Khi một skill chạy **thất bại**, Agent không bỏ cuộc ngay mà tự khắc phục (`_recover`, tối đa `MAX_RECOVER` vòng):
+Khi một skill chạy **thất bại**, Agent tự khắc phục trong giới hạn cấu hình:
 
-1. **Thiếu thư viện Python** (skill trả `"pip install X"` hoặc `No module named 'X'`) → tự chạy `pip install X --break-system-packages` rồi thử lại. Cài được nhiều gói nối tiếp, mỗi gói thử một lần.
-2. **Thiếu công cụ hệ thống** (vd `ffmpeg`, `ffprobe`, `tesseract`, `yt-dlp`...) → tự cài qua trình quản lý gói của HĐH: `winget`/`choco` (Windows), `brew` (macOS), `apt-get` (Linux) rồi thử lại.
+1. **Thiếu dependency** → báo rõ dependency cần thiết. Việc cài tự động mặc định bị tắt; chỉ bật có chủ đích bằng `AGENT_ALLOW_AUTO_INSTALL=1`.
+2. **Thiếu công cụ hệ thống** → ưu tiên công cụ đã có trong PATH/project; không tự thay đổi máy nếu chưa bật quyền auto-install.
 3. **Đọc lại yêu cầu tham số** — `_param_schema` lấy schema, chuẩn hoá cả skill kiểu cũ (dùng `parameters` thay `params`).
 4. **Tự điền tham số** (`_self_fill`): đặt tên mặc định cho tham số đầu ra; **quét thư mục làm việc** tìm tệp khớp loại (video/audio/ảnh); nhờ **LLM suy luận** từ yêu cầu + danh sách tệp + lỗi trước.
 5. **Hỏi lại người dùng** nếu vẫn thiếu tham số **bắt buộc**: trả `needs_input` + `ask`; dashboard hiện câu hỏi và đọc to để bạn bổ sung.
 
-Ví dụ "tạo biên bản cuộc họp từ video" mà quên đính kèm đường dẫn: nếu trong thư mục có đúng một tệp video, Agent tự dùng; thiếu `ffmpeg` thì tự cài; nếu vẫn bí thì hỏi lại đúng thứ còn thiếu.
+Skill được chạy trong child process với timeout (`AGENT_SKILL_TIMEOUT`, mặc định 300 giây),
+giúp lỗi hoặc vòng lặp trong skill không làm treo tiến trình agent chính. Đây là process
+isolation, không phải sandbox quyền hệ điều hành.
+
+Giới hạn orchestration có thể chỉnh trong `config.json`:
+
+```json
+"limits": {
+  "max_rounds": 4,
+  "max_fix": 3,
+  "max_recover": 3,
+  "max_llm_calls": 24,
+  "max_task_seconds": 300
+}
+```
+
+Metrics tổng hợp có tại `GET /api/metrics` (call count, failure, latency và job status).
 
 ## Tác vụ đa bước (pipeline)
 

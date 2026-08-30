@@ -10,16 +10,32 @@ const visual = (detail) =>
 
 function pickVoice() {
   const voices = window.speechSynthesis?.getVoices() || [];
+  const vietnamese = voices.filter((voice) => /^vi([-_]|$)/i.test(voice.lang));
   return (
-    voices.find((voice) => /hoai\s*_?my/i.test(voice.name)) ||
-    voices.find(
+    vietnamese.find((voice) => /hoai\s*_?my/i.test(voice.name)) ||
+    vietnamese.find(
       (voice) =>
-        /vi([-_]|$)/i.test(voice.lang) &&
         /natural|online|neural/i.test(voice.name),
     ) ||
-    voices.find((voice) => /vi([-_]|$)/i.test(voice.lang)) ||
+    vietnamese[0] ||
     null
   );
+}
+
+function waitForVietnameseVoice(timeout = 1400) {
+  const current = pickVoice();
+  if (current || !("speechSynthesis" in window)) return Promise.resolve(current);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.speechSynthesis.removeEventListener?.("voiceschanged", finish);
+      resolve(pickVoice());
+    };
+    window.speechSynthesis.addEventListener?.("voiceschanged", finish, { once: true });
+    setTimeout(finish, timeout);
+  });
 }
 
 export function createVoiceEngine({
@@ -35,7 +51,7 @@ export function createVoiceEngine({
   let armed = false;
   let armTimer = null;
   let audio = null;
-  let serverTts = true;
+  let serverTtsRetryAt = 0;
   const wakes = [
     ...AGENT_WAKE_ALIASES,
     ...AGENT_WAKE_ALIASES.map((name) => `chào ${name}`),
@@ -154,14 +170,16 @@ export function createVoiceEngine({
     return listening;
   };
 
-  const speakBrowser = (text, done) => {
+  const speakBrowser = async (text, done) => {
     if (!("speechSynthesis" in window)) return done();
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    const voice = pickVoice();
+    const voice = await waitForVietnameseVoice();
     if (voice) utterance.voice = voice;
-    utterance.lang = voice?.lang || "vi-VN";
-    utterance.rate = 1.18;
+    // Keep the requested language Vietnamese even when the OS has no explicit
+    // Vietnamese voice; this lets the browser choose its vi-VN fallback.
+    utterance.lang = "vi-VN";
+    utterance.rate = 1.05;
     utterance.onboundary = () => visual({ type: "voice-pulse", strength: 1 });
     utterance.onend = done;
     utterance.onerror = done;
@@ -172,7 +190,7 @@ export function createVoiceEngine({
     if (!text) return done();
     const spokenText = prepareSpeechText(text);
     stopSpeaking();
-    if (serverTts) {
+    if (Date.now() >= serverTtsRetryAt) {
       try {
         const response = await fetch("/api/tts", {
           method: "POST",
@@ -194,12 +212,14 @@ export function createVoiceEngine({
           await audio.play();
           return;
         }
-        serverTts = false;
+        serverTtsRetryAt = Date.now() + 10000;
       } catch (_) {
-        serverTts = false;
+        // A transient TTS/network failure must not permanently switch the
+        // whole session to a possibly non-Vietnamese browser voice.
+        serverTtsRetryAt = Date.now() + 10000;
       }
     }
-    speakBrowser(spokenText, done);
+    await speakBrowser(spokenText, done);
   };
 
   function stopSpeaking() {

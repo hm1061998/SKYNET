@@ -61,7 +61,8 @@ MODEL_CATALOG = {
 
 def _start_job(agent: SkillAgent, task: str, steps=None) -> str:
     jid = uuid.uuid4().hex[:12]
-    job = {"status": "running", "task": task, "logs": [], "result": None}
+    job = {"status": "running", "task": task, "logs": [], "result": None,
+           "llm_metrics": {}}
     with _JOBS_LOCK:
         JOBS[jid] = job
         # dọn job cũ đã xong (giữ tối đa 20)
@@ -69,16 +70,21 @@ def _start_job(agent: SkillAgent, task: str, steps=None) -> str:
         for k in done[:-20]:
             JOBS.pop(k, None)
 
+    # Each concurrent job owns its orchestrator/LLM wrapper. execute_task uses
+    # task-local context and must not mutate a shared AGENT.llm across threads.
+    task_agent = SkillAgent(Config.load())
+
     def _run():
         def _cb(msg: str):
             with _JOBS_LOCK:
                 job["logs"].append(msg)
         try:
-            res = agent.execute_task(task, log=_cb, steps=steps)
+            res = task_agent.execute_task(task, log=_cb, steps=steps)
         except Exception as e:
             res = {"success": False, "error": str(e), "logs": job["logs"]}
         with _JOBS_LOCK:
             job["result"] = res
+            job["llm_metrics"] = dict(getattr(task_agent.llm, "metrics", {}) or {})
             job["status"] = "done"
 
     threading.Thread(target=_run, daemon=True).start()
@@ -118,18 +124,16 @@ def maybe_reload_code():
         _CODE_MTIME = mt   # tránh thử lại liên tục khi lỗi kéo dài
 
 
-TTS_RATE = "+30%"   # tốc độ đọc: "+0%" chuẩn, "+18%" nhanh vừa, "+30%" nhanh
+TTS_VOICE = "vi-VN-HoaiMyNeural"
+TTS_RATE = "+15%"
 
 
-def _tts_bytes(text: str, voice: str = "vi-VN-HoaiMyNeural", rate: str | None = None) -> bytes:
+def _tts_bytes(text: str, voice: str = TTS_VOICE, rate: str | None = None) -> bytes:
     """Sinh giọng nói tiếng Việt (mp3) bằng edge-tts — miễn phí, chạy được mọi trình duyệt."""
-    from core import autoinstall
     try:
         import edge_tts
     except ImportError:
-        if not autoinstall.pip_install("edge-tts", log=print):
-            raise RuntimeError("Không cài được edge-tts (cần mạng).")
-        import edge_tts
+        return _tts_bytes_via_cli(text, voice, rate or TTS_RATE)
     import asyncio
 
     async def _gen() -> bytes:
@@ -140,6 +144,48 @@ def _tts_bytes(text: str, voice: str = "vi-VN-HoaiMyNeural", rate: str | None = 
         return buf
 
     return asyncio.run(_gen())
+
+
+def _tts_bytes_via_cli(text: str, voice: str, rate: str) -> bytes:
+    """Use an existing system Python edge-tts when server Python lacks the SDK."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    launchers = []
+    if shutil.which("py"):
+        launchers.append([shutil.which("py")])
+    if shutil.which("python"):
+        launchers.append([shutil.which("python")])
+    child_env = os.environ.copy()
+    for key in ("PYTHONHOME", "PYTHONPATH", "__PYVENV_LAUNCHER__"):
+        child_env.pop(key, None)
+    errors = []
+    with tempfile.TemporaryDirectory(prefix="skynet_tts_") as temp_dir:
+        text_path = os.path.join(temp_dir, "speech.txt")
+        audio_path = os.path.join(temp_dir, "speech.mp3")
+        with open(text_path, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        for launcher in launchers:
+            command = launcher + [
+                "-m", "edge_tts", "--file", text_path,
+                "--voice", voice, "--rate", rate,
+                "--write-media", audio_path,
+            ]
+            try:
+                proc = subprocess.run(
+                    command, capture_output=True, text=True, timeout=90, env=child_env
+                )
+                if proc.returncode == 0 and os.path.isfile(audio_path):
+                    with open(audio_path, "rb") as stream:
+                        audio = stream.read()
+                    if audio:
+                        return audio
+                errors.append((proc.stderr or proc.stdout or "edge-tts CLI lỗi")[-300:])
+            except Exception as exc:
+                errors.append(str(exc))
+    detail = errors[-1] if errors else "không tìm thấy Python có edge-tts"
+    raise RuntimeError(f"Không tạo được giọng tiếng Việt: {detail}")
 
 
 def refresh_config():
@@ -252,6 +298,34 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/model-config":
             refresh_config()
             return self._json(model_config_payload())
+        if self.path == "/api/metrics":
+            metrics = dict(getattr(AGENT.llm, "metrics", {}) or {})
+            with _JOBS_LOCK:
+                completed_metrics = [job.get("llm_metrics") or {} for job in JOBS.values()]
+            metrics["calls"] = int(metrics.get("calls", 0) or 0) + sum(
+                int(item.get("calls", 0) or 0) for item in completed_metrics
+            )
+            metrics["failures"] = int(metrics.get("failures", 0) or 0) + sum(
+                int(item.get("failures", 0) or 0) for item in completed_metrics
+            )
+            metrics["latency_ms"] = float(metrics.get("latency_ms", 0.0) or 0.0) + sum(
+                float(item.get("latency_ms", 0.0) or 0.0) for item in completed_metrics
+            )
+            by_purpose = dict(metrics.get("by_purpose") or {})
+            for item in completed_metrics:
+                for purpose, count in (item.get("by_purpose") or {}).items():
+                    by_purpose[purpose] = int(by_purpose.get(purpose, 0)) + int(count or 0)
+            metrics["by_purpose"] = by_purpose
+            calls = int(metrics.get("calls", 0) or 0)
+            metrics["average_latency_ms"] = round(
+                float(metrics.get("latency_ms", 0.0) or 0.0) / max(calls, 1), 2
+            )
+            with _JOBS_LOCK:
+                metrics["jobs"] = {
+                    "running": sum(1 for job in JOBS.values() if job["status"] == "running"),
+                    "completed": sum(1 for job in JOBS.values() if job["status"] == "done"),
+                }
+            return self._json(metrics)
         if self.path.startswith("/plans/"):
             name = os.path.basename(self.path[len("/plans/"):])
             return self._file(PLANS_DIR / name)
@@ -323,7 +397,9 @@ class Handler(BaseHTTPRequestHandler):
             if not text:
                 return self._json({"error": "empty"}, 400)
             try:
-                audio = _tts_bytes(text, (body.get("voice") or "vi-VN-HoaiMyNeural").strip(),
+                requested_voice = (body.get("voice") or TTS_VOICE).strip()
+                voice = requested_voice if requested_voice.startswith("vi-VN-") else TTS_VOICE
+                audio = _tts_bytes(text, voice,
                                    rate=(body.get("rate") or "").strip() or None)
                 self.send_response(200)
                 self.send_header("Content-Type", "audio/mpeg")

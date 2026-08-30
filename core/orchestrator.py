@@ -17,7 +17,7 @@ from . import autoinstall
 from . import tools as tools_mod
 from .config import Config
 from .generator import generate, fix, validate, GeneratorError
-from .llm import LLM, extract_json
+from .llm import LLM
 from .identity import AGENT_NAME
 from .memory import Memory
 from .registry import Registry
@@ -141,9 +141,12 @@ class _CtxLLM:
     diễn biến các bước/lỗi đến giờ) vào MỌI request, để model luôn có cái nhìn toàn cảnh
     thay vì chỉ thấy một lát cắt hẹp. Context lớn của DeepSeek/Claude/GPT chứa thoải mái."""
 
-    def __init__(self, llm, get_block):
+    def __init__(self, llm, get_block, max_calls=24, deadline=None):
         self._llm = llm
         self._get = get_block
+        self.max_calls = max_calls
+        self.deadline = deadline
+        self.calls = 0
 
     @property
     def config(self):
@@ -158,21 +161,38 @@ class _CtxLLM:
                 + list(messages))
 
     def complete(self, messages, **kw):
+        self._check_budget()
         return self._llm.complete(self._inject(messages), **kw)
 
     def complete_json(self, messages, **kw):
+        self._check_budget()
         return self._llm.complete_json(self._inject(messages), **kw)
+
+    def _check_budget(self):
+        if self.deadline and time.monotonic() > self.deadline:
+            raise RuntimeError("Đã hết thời gian thực thi tác vụ")
+        if self.calls >= self.max_calls:
+            raise RuntimeError(f"Đã chạm ngân sách {self.max_calls} lượt gọi LLM cho tác vụ")
+        self.calls += 1
 
 
 class SkillAgent:
-    CTX_BUDGET = 12000  # số ký tự log diễn biến tối đa đính kèm mỗi request
-    MAX_FIX = 0       # 0 = sửa skill mới TỚI KHI ĐƯỢC; chỉ dừng khi lỗi lặp y hệt (hết tiến triển)
+    CTX_BUDGET = 6000
+    MAX_FIX = 3
     FIX_STALL = 2     # số lần sửa liên tiếp mà lỗi không đổi thì dừng
-    MAX_RECOVER = 4   # số vòng tự phục hồi khi skill chạy lỗi
+    MAX_RECOVER = 3
+    MAX_LLM_CALLS = 24
+    MAX_TASK_SECONDS = 300
 
     def __init__(self, config: Config | None = None, memory: Memory | None = None,
                  session: str = "default"):
         self.config = config or Config.load()
+        limits = self.config.data.get("limits", {}) or {}
+        self.MAX_ROUNDS = max(1, int(limits.get("max_rounds", self.MAX_ROUNDS)))
+        self.MAX_FIX = max(1, int(limits.get("max_fix", self.MAX_FIX)))
+        self.MAX_RECOVER = max(1, int(limits.get("max_recover", self.MAX_RECOVER)))
+        self.MAX_LLM_CALLS = max(1, int(limits.get("max_llm_calls", self.MAX_LLM_CALLS)))
+        self.MAX_TASK_SECONDS = max(10, int(limits.get("max_task_seconds", self.MAX_TASK_SECONDS)))
         self.llm = LLM(self.config)
         self.registry = Registry().load()
         self.memory = (memory or Memory(session=session)).load()
@@ -198,7 +218,9 @@ class SkillAgent:
             data = self.llm.complete_json(
                 [{"role": "system", "content": sys_content},
                  {"role": "user", "content": text}],
-                role="chat", purpose="classify", temperature=0.2, max_tokens=400)
+                role="chat", purpose="classify", temperature=0.2, max_tokens=400,
+                schema={"type": str, "reply": (str, False),
+                        "task": (str, False), "fact": (str, False)})
         except Exception as e:
             return {"mode": "chat", "reply": f"(Lỗi model chat: {e})"}
 
@@ -227,7 +249,8 @@ class SkillAgent:
             data = self.llm.complete_json(
                 [{"role": "system", "content": _PLAN_SYS},
                  {"role": "user", "content": f"Tác vụ: {task}"}],
-                role="chat", purpose="plan", temperature=0.3, max_tokens=500)
+                role="chat", purpose="plan", temperature=0.3, max_tokens=500,
+                schema={"steps": list})
             steps = (data or {}).get("steps")
             if isinstance(steps, list) and steps:
                 return [str(s) for s in steps]
@@ -241,7 +264,7 @@ class SkillAgent:
         ]
 
     # ============ MODEL WORK: điều phối ============
-    MAX_ROUNDS = 0   # 0 = KHÔNG giới hạn vòng "chạy → nghiệm thu → lập kế hoạch lại"
+    MAX_ROUNDS = 4
     MAX_STALL = 3    # nhưng dừng nếu N vòng liên tiếp không có tiến triển mới
 
     def execute_task(self, task: str, log=None, steps=None) -> dict:
@@ -259,23 +282,30 @@ class SkillAgent:
         # bọc LLM: mọi request trong task này đều được đính kèm bối cảnh toàn cục
         llm_orig = self.llm
         if not isinstance(self.llm, _CtxLLM):
-            self.llm = _CtxLLM(llm_orig, lambda: self._ctx_block(task, logs))
+            self.llm = _CtxLLM(
+                llm_orig,
+                lambda: self._ctx_block(task, logs),
+                max_calls=self.MAX_LLM_CALLS,
+                deadline=time.monotonic() + self.MAX_TASK_SECONDS,
+            )
         try:
             return self._execute_rounds(task, steps, _log, logs)
         finally:
             self.llm = llm_orig
 
     def _ctx_block(self, task: str, logs: list) -> str:
-        body = "\n".join(logs)
-        if len(body) > self.CTX_BUDGET:
-            body = "…(cắt bớt phần đầu)\n" + body[-self.CTX_BUDGET:]
+        recent = [str(line)[-500:] for line in logs[-24:]]
         try:
             mem = self.memory.context_block(task, k_facts=5, n_history=0)
         except Exception:
             mem = ""
-        return (f"MỤC TIÊU GỐC của người dùng: {task}\n"
-                + (mem + "\n" if mem else "")
-                + f"DIỄN BIẾN ĐẾN GIỜ (log thực thi, mới nhất ở cuối):\n{body}")
+        state = {
+            "goal": task,
+            "relevant_memory": mem[:1800],
+            "recent_execution_events_untrusted": recent,
+        }
+        body = json.dumps(state, ensure_ascii=False, default=str)
+        return body[-self.CTX_BUDGET:]
 
     def _execute_rounds(self, task, steps, _log, logs) -> dict:
         feedback = ""
@@ -285,7 +315,7 @@ class SkillAgent:
         last_sig = None
         while True:
             rnd += 1
-            if self.MAX_ROUNDS and rnd > self.MAX_ROUNDS:
+            if rnd > self.MAX_ROUNDS:
                 _log(f"[✗] Chạm giới hạn {self.MAX_ROUNDS} vòng.")
                 break
 
@@ -355,19 +385,27 @@ class SkillAgent:
         try:
             data = self.llm.complete_json(
                 [{"role": "system", "content": sys_p},
-                 {"role": "user", "content": user_p}], role="work", purpose="verify")
+                 {"role": "user", "content": user_p}], role="verify", purpose="verify",
+                schema={"achieved": bool, "reason": (str, False)})
             if isinstance(data, dict) and "achieved" in data:
                 return {"achieved": bool(data["achieved"]),
                         "feedback": str(data.get("reason", ""))}
         except Exception as e:
-            _log(f"[!] Lỗi verify bước: {e} → tạm chấp nhận kết quả bước.")
-        return {"achieved": True}
+            _log(f"[!] Không xác minh được bước: {e}")
+        return {"achieved": False, "feedback": "Không xác minh được kết quả bước"}
 
     def _goal_check(self, task: str, res: dict, _log) -> dict:
         """Đối chiếu KẾT QUẢ với MỤC TIÊU. Trả {"achieved": bool, "feedback": str}."""
         if not res.get("success"):
             return {"achieved": False, "feedback": str(res.get("error", ""))[:300]}
-        if not self._llm_ready():
+        deterministic = self._artifact_check(res)
+        if deterministic is not None:
+            if deterministic["achieved"]:
+                _log("[✓] Nghiệm thu xác định: artifact đầu ra hợp lệ.")
+            else:
+                _log(f"[~] Artifact chưa hợp lệ: {deterministic['feedback']}")
+            return deterministic
+        if not self._llm_ready("verify"):
             _log("[i] Không có LLM để nghiệm thu → tạm chấp nhận kết quả.")
             return {"achieved": True}
         summary = _summarize(res if isinstance(res.get("result"), str) else
@@ -386,7 +424,8 @@ class SkillAgent:
         try:
             data = self.llm.complete_json(
                 [{"role": "system", "content": sys_p},
-                 {"role": "user", "content": user_p}], role="work", purpose="verify")
+                 {"role": "user", "content": user_p}], role="verify", purpose="verify",
+                schema={"achieved": bool, "reason": (str, False)})
             if isinstance(data, dict) and "achieved" in data:
                 ok = bool(data["achieved"])
                 if ok:
@@ -401,6 +440,35 @@ class SkillAgent:
             _log(f"[!] Lỗi khi nghiệm thu: {e} → coi như CHƯA đạt.")
             return {"achieved": False, "feedback": f"không nghiệm thu được: {e}"}
 
+    def _artifact_check(self, res: dict) -> dict | None:
+        """Verify identifiable output files without relying on model judgment."""
+        candidates = []
+        for key, value in (res.get("params") or {}).items():
+            if _is_output(key) and isinstance(value, str) and value.strip():
+                candidates.append(value.strip())
+        result = res.get("result")
+        if isinstance(result, dict):
+            for key, value in result.items():
+                if (_is_output(key) or "path" in key.lower()) and isinstance(value, str) and value.strip():
+                    candidates.append(value.strip())
+        if not candidates:
+            return None
+        missing, empty = [], []
+        for raw in dict.fromkeys(candidates):
+            path = Path(raw).expanduser()
+            if not path.exists():
+                missing.append(raw)
+            elif path.is_file() and path.stat().st_size <= 0:
+                empty.append(raw)
+        if missing or empty:
+            messages = []
+            if missing:
+                messages.append("không tồn tại: " + ", ".join(missing[:3]))
+            if empty:
+                messages.append("file rỗng: " + ", ".join(empty[:3]))
+            return {"achieved": False, "feedback": "; ".join(messages)}
+        return {"achieved": True, "feedback": ""}
+
     # ---------- tách tác vụ ghép thành nhiều bước ----------
     def _decompose(self, task, _log) -> list[str]:
         # LUÔN hỏi LLM (nếu có): việc lớn phải được chia thành nhiều bước nhỏ,
@@ -411,7 +479,8 @@ class SkillAgent:
             data = self.llm.complete_json(
                 [{"role": "system", "content": _DECOMPOSE_SYS},
                  {"role": "user", "content": f"Yêu cầu: {task}"}],
-                role="work", purpose="decompose", temperature=0.2, max_tokens=500)
+                role="work", purpose="decompose", temperature=0.2, max_tokens=500,
+                schema={"steps": list})
             steps = (data or {}).get("steps")
             if isinstance(steps, list):
                 steps = [str(s).strip() for s in steps if str(s).strip()]
@@ -433,7 +502,7 @@ class SkillAgent:
             res = self._run_single(st, _log, logs, context=prev_ctx)
 
             # VERIFY TỪNG BƯỚC: chạy "thành công" chưa đủ — kết quả phải ĐÚNG VIỆC của bước
-            if res.get("success") and self._llm_ready():
+            if res.get("success") and self._llm_ready("verify"):
                 chk = self._step_check(st, res, _log)
                 if not chk.get("achieved"):
                     why = str(chk.get("feedback", ""))[:200]
@@ -709,16 +778,18 @@ class SkillAgent:
                   f"Tham số: {json.dumps(params, ensure_ascii=False)}\nLỗi: {error}\n"
                   f"Đã thử (đừng lặp lại cách đã thất bại): {sorted(tried or [])}")
         try:
-            raw = self.llm.complete(
+            data = self.llm.complete_json(
                 [{"role": "system", "content": sys_p},
-                 {"role": "user", "content": user_p}], role="work", purpose="diagnose")
+                 {"role": "user", "content": user_p}], role="work", purpose="diagnose",
+                schema={"action": str, "package": (str, False), "tool": (str, False),
+                        "params": (dict, False), "reason": (str, False)})
         except Exception as e:
             # KHÔNG nuốt lỗi: cho người dùng thấy LLM có được gọi hay không
             _log(f"[!] GỌI LLM CHẨN ĐOÁN THẤT BẠI: {e}")
             return {}
-        data = extract_json(raw)
-        if not isinstance(data, dict):
-            _log(f"[!] LLM chẩn đoán trả lời KHÔNG PHẢI JSON: {str(raw)[:150]!r}")
+        allowed = {"install_package", "install_tool", "params", "fix_code", "new_skill", "stop"}
+        if data.get("action") not in allowed:
+            _log(f"[!] LLM chẩn đoán trả action không hợp lệ: {data.get('action')!r}")
             return {}
         return data
 
@@ -811,6 +882,9 @@ class SkillAgent:
             _log(f"[✓] Tìm thấy '{tool}' tại: {exe} → đã thêm vào PATH.")
             self.memory.remember(f"Công cụ {tool} nằm tại {exe}.", kind="note", tags=[tool])
             return True
+        if not autoinstall.enabled():
+            _log("[!] Không tự cài công cụ hệ thống. Bật AGENT_ALLOW_AUTO_INSTALL=1 nếu đã cho phép.")
+            return False
         sysname = platform.system().lower()
         if "windows" in sysname:
             cmds = [["winget", "install", "-e", "--id", _WINGET_ID.get(tool, tool),
@@ -937,9 +1011,9 @@ class SkillAgent:
         return (f"Mình cần thêm thông tin để chạy '{name}': " + "; ".join(parts)
                 + ". Bạn cung cấp giúp nhé (ví dụ gửi kèm đường dẫn tệp).")
 
-    def _llm_ready(self) -> bool:
+    def _llm_ready(self, role="work") -> bool:
         try:
-            rc = self.config.resolve("work")
+            rc = self.config.resolve(role)
             return rc.ready and not rc.is_mock
         except Exception:
             return False

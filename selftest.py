@@ -177,10 +177,10 @@ def main():
     check("memory goi y lai skill da dung", recalled == ex.get("skill"), f"-> {recalled}")
 
     print("\n[9] Tu doc lai skill + tu dien tham so + hoi lai")
-    vm = agent.registry.get("video_meeting_summary")
+    vm = agent.registry.get("latest_video")
     sch = agent._param_schema(vm) if vm else {}
-    check("chuan hoa meta cu ('parameters'->params)",
-          bool(sch) and sch.get("video_path", {}).get("required") is True, str(list(sch)))
+    check("chuan hoa JSON Schema cu ('parameters'->params)",
+          bool(sch) and "directory" in sch, str(list(sch)))
     nv = SKILLS_DIR / "needvideo.py"
     nv.write_text(NEEDVIDEO_SRC, encoding="utf-8")
     agent.registry.load()
@@ -191,11 +191,12 @@ def main():
     vidf = "hop_selftest_xyz.mp4"
     with open(vidf, "w") as _vf:
         _vf.write("x")
-    r_fill = agent.execute_task("tao bien ban cuoc hop tu video")
+    fill_schema = agent._param_schema(agent.registry.get("needvideo"))
+    fill_params = agent._self_fill("tao bien ban cuoc hop tu video", "needvideo",
+                                   fill_schema, {}, "", use_llm=False)
     check("tu dien video_path tu file trong thu muc",
-          bool(r_fill.get("success")) and r_fill.get("params", {}).get("video_path") == vidf,
-          str(r_fill.get("params")))
-    check("tu dat ten output mac dinh", bool(r_fill.get("params", {}).get("output_path")))
+          fill_params.get("video_path") == vidf, str(fill_params))
+    check("tu dat ten output mac dinh", bool(fill_params.get("output_path")))
     try:
         os.remove(vidf)
     except OSError:
@@ -205,27 +206,15 @@ def main():
     except OSError:
         pass
 
-    print("\n[10] Tu cai thu vien thieu roi chay lai")
+    print("\n[10] Dependency policy an toan")
     from core.orchestrator import _missing_package as _mp
     check("nhan dien 'pip install X'", _mp("pip install SpeechRecognition") == "SpeechRecognition")
-    check("nhan dien 'No module named'", _mp("No module named 'cv2'") == "cv2")
-    nl = SKILLS_DIR / "needlib.py"
-    nl.write_text(NEEDLIB_SRC, encoding="utf-8")
-    agent.registry.load()
-    _flag = "_dep_ok.flag"
-    if os.path.exists(_flag):
-        os.remove(_flag)
-    agent._pip_install = lambda pkg, _log: (open(_flag, "w").close() or True)
-    r_dep = agent.execute_task("needlib depstest xulyabc thuvien")
-    check("tu cai lib roi chay lai -> success", bool(r_dep.get("success")), str(r_dep.get("error")))
-    if os.path.exists(_flag):
-        os.remove(_flag)
-    try:
-        nl.unlink()
-    except OSError:
-        pass
+    check("map 'No module named' sang pip package",
+          _mp("No module named 'cv2'") == "opencv-python")
+    from core import autoinstall as _ai
+    check("auto-install mac dinh tat", _ai.enabled() is False)
 
-    print("\n[11] Pipeline da buoc + tu cai cong cu he thong")
+    print("\n[11] Pipeline da buoc + policy cong cu he thong")
     from core.orchestrator import _missing_tool as _mt
     check("nhan dien cong cu thieu (WinError)", _mt("[WinError 2] cannot find 'ffmpeg'") == "ffmpeg")
     check("nhan dien 'command not found'", _mt("ffmpeg: command not found") == "ffmpeg")
@@ -243,21 +232,8 @@ def main():
         es.unlink()
     except OSError:
         pass
-    nf = SKILLS_DIR / "needff.py"
-    nf.write_text(NEEDFF_SRC, encoding="utf-8")
-    agent.registry.load()
-    _ff = "_ff_ok.flag"
-    if os.path.exists(_ff):
-        os.remove(_ff)
-    agent._install_system_tool = lambda t, _log: (open(_ff, "w").close() or True)
-    r_ff = agent.execute_task("needff ffmpegtest xyzvideo")
-    check("tu cai cong cu roi chay lai", bool(r_ff.get("success")), str(r_ff.get("error")))
-    if os.path.exists(_ff):
-        os.remove(_ff)
-    try:
-        nf.unlink()
-    except OSError:
-        pass
+    check("khong tu cai cong cu khi chua opt-in",
+          agent._install_system_tool("definitely_missing_selftest_tool", lambda _m: None) is False)
 
     # ---- don dep ----
     shutil.rmtree(mem_dir, ignore_errors=True)

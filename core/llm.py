@@ -8,8 +8,8 @@ from __future__ import annotations
 import importlib
 import json
 import re
-import subprocess
-import sys
+import time
+from threading import Lock
 
 from .config import Config, RoleConfig
 from .identity import AGENT_NAME
@@ -19,16 +19,52 @@ class LLMError(RuntimeError):
     pass
 
 
+class LLMResponseError(LLMError):
+    """Provider responded, but the response does not satisfy the requested contract."""
+
+
+def validate_json(data, schema: dict | None):
+    """Small dependency-free JSON contract validator.
+
+    Schema maps keys to Python types, tuples of types, or ``(type, required)``.
+    It intentionally validates control-plane responses strictly instead of
+    silently accepting model-shaped data.
+    """
+    if schema is None:
+        return data
+    if not isinstance(data, dict):
+        raise LLMResponseError("LLM không trả về JSON object")
+    out = dict(data)
+    for key, rule in schema.items():
+        required = True
+        expected = rule
+        if isinstance(rule, tuple) and len(rule) == 2 and isinstance(rule[1], bool):
+            expected, required = rule
+        if key not in out:
+            if required:
+                raise LLMResponseError(f"JSON thiếu trường bắt buộc: {key}")
+            continue
+        value = out[key]
+        allowed = expected if isinstance(expected, tuple) else (expected,)
+        # bool is an int subclass; do not let 0/1 pass a boolean contract.
+        if bool in allowed and isinstance(value, bool):
+            continue
+        if not isinstance(value, allowed) or (bool not in allowed and isinstance(value, bool)):
+            names = ", ".join(t.__name__ for t in allowed)
+            raise LLMResponseError(f"Trường '{key}' phải có kiểu {names}")
+    return out
+
+
 def _import(module: str, pip_name: str | None = None):
-    """Import module, tự cài bằng pip nếu thiếu."""
+    """Import provider SDK without mutating the Python environment."""
     try:
         return importlib.import_module(module)
-    except ImportError:
+    except ImportError as exc:
         pkg = pip_name or module
-        print(f"[llm] Đang cài SDK: {pkg} ...", file=sys.stderr)
-        subprocess.run([sys.executable, "-m", "pip", "install", pkg,
-                        "--break-system-packages", "--quiet"], check=False)
-        return importlib.import_module(module)
+        raise LLMError(
+            f"Thiếu SDK '{pkg}'. Hãy cài dependency trước khi khởi động agent; "
+            "LLM runtime không tự thay đổi môi trường."
+        ) from exc
 
 
 def extract_json(text: str):
@@ -64,20 +100,34 @@ def extract_json(text: str):
 class LLM:
     def __init__(self, config: Config):
         self.config = config
+        self._clients = {}
+        self._client_lock = Lock()
+        self.metrics = {"calls": 0, "failures": 0, "latency_ms": 0.0, "by_purpose": {}}
+
+    def _client(self, key, factory):
+        with self._client_lock:
+            if key not in self._clients:
+                self._clients[key] = factory()
+            return self._clients[key]
 
     # ================= API chính =================
     def complete(self, messages, role: str = "chat", purpose: str | None = None,
                  temperature: float = 0.3, max_tokens: int = 2048) -> str:
         cfg = self.config.resolve(role)
-        if cfg.is_mock:
-            return _mock_complete(messages, purpose)
-        if not cfg.api_key and not cfg.is_local:
-            raise LLMError(
-                f"Thiếu API key cho provider '{cfg.provider}' (role {role}). "
-                f"Điền vào config.json hoặc export biến môi trường, "
-                f"hoặc đặt provider='mock' để chạy thử offline."
-            )
+        started = time.monotonic()
+        purpose_key = purpose or "unspecified"
+        with self._client_lock:
+            self.metrics["calls"] += 1
+            self.metrics["by_purpose"][purpose_key] = self.metrics["by_purpose"].get(purpose_key, 0) + 1
         try:
+            if cfg.is_mock:
+                return _mock_complete(messages, purpose)
+            if not cfg.api_key and not cfg.is_local:
+                raise LLMError(
+                    f"Thiếu API key cho provider '{cfg.provider}' (role {role}). "
+                    f"Điền qua biến môi trường hoặc secret store, "
+                    f"hoặc đặt provider='mock' để chạy thử offline."
+                )
             if cfg.provider in ("openai", "deepseek", "9router", "local"):
                 return self._openai(cfg, messages, temperature, max_tokens)
             if cfg.provider == "anthropic":
@@ -86,12 +136,23 @@ class LLM:
                 return self._gemini(cfg, messages, temperature, max_tokens)
             raise LLMError(f"Provider không hỗ trợ: {cfg.provider}")
         except LLMError:
+            with self._client_lock:
+                self.metrics["failures"] += 1
             raise
         except Exception as e:  # pragma: no cover - phụ thuộc mạng
+            with self._client_lock:
+                self.metrics["failures"] += 1
             raise LLMError(f"Gọi {cfg.provider}:{cfg.model} lỗi: {e}") from e
+        finally:
+            with self._client_lock:
+                self.metrics["latency_ms"] += (time.monotonic() - started) * 1000
 
-    def complete_json(self, messages, role="chat", purpose=None, **kw):
-        return extract_json(self.complete(messages, role=role, purpose=purpose, **kw))
+    def complete_json(self, messages, role="chat", purpose=None, schema=None, **kw):
+        raw = self.complete(messages, role=role, purpose=purpose, **kw)
+        data = extract_json(raw)
+        if data is None:
+            raise LLMResponseError("Không parse được JSON từ phản hồi LLM")
+        return validate_json(data, schema)
 
     # ================= OpenAI / DeepSeek =================
     def _openai(self, cfg: RoleConfig, messages, temperature, max_tokens) -> str:
@@ -99,20 +160,36 @@ class LLM:
         kwargs = {"api_key": cfg.api_key or "local"}
         if cfg.base_url:
             kwargs["base_url"] = cfg.base_url
-        client = OpenAI(**kwargs)
+        kwargs.update({"timeout": 90.0, "max_retries": 2})
+        client = self._client(
+            ("openai", cfg.base_url or "", cfg.api_key or "local"),
+            lambda: OpenAI(**kwargs),
+        )
         try:
             resp = client.chat.completions.create(
                 model=cfg.model, messages=messages,
                 temperature=temperature, max_tokens=max_tokens)
-        except Exception:
-            # vài model (o1/o4...) không nhận temperature/max_tokens -> thử tối giản
+        except Exception as exc:
+            # Retry without optional sampling arguments only for an explicit
+            # unsupported-parameter response. Never duplicate auth/rate-limit/
+            # timeout requests under the guise of compatibility.
+            msg = str(exc).lower()
+            unsupported = any(x in msg for x in (
+                "unsupported parameter", "does not support", "unknown parameter",
+                "temperature is not", "max_tokens is not",
+            ))
+            if not unsupported:
+                raise
             resp = client.chat.completions.create(model=cfg.model, messages=messages)
         return resp.choices[0].message.content or ""
 
     # ================= Anthropic =================
     def _anthropic(self, cfg: RoleConfig, messages, temperature, max_tokens) -> str:
         anthropic = _import("anthropic")
-        client = anthropic.Anthropic(api_key=cfg.api_key)
+        client = self._client(
+            ("anthropic", cfg.api_key),
+            lambda: anthropic.Anthropic(api_key=cfg.api_key, timeout=90.0, max_retries=2),
+        )
         system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
         conv = [{"role": ("assistant" if m["role"] == "assistant" else "user"),
                  "content": m["content"]}
@@ -132,11 +209,16 @@ class LLM:
         gen_cfg = {"temperature": temperature, "max_output_tokens": max_tokens}
         try:
             model = genai.GenerativeModel(cfg.model, system_instruction=system or None)
-            resp = model.generate_content(body, generation_config=gen_cfg)
+            resp = model.generate_content(
+                body, generation_config=gen_cfg, request_options={"timeout": 90}
+            )
         except TypeError:
             model = genai.GenerativeModel(cfg.model)
             resp = model.generate_content(
-                (system + "\n\n" + body) if system else body, generation_config=gen_cfg)
+                (system + "\n\n" + body) if system else body,
+                generation_config=gen_cfg,
+                request_options={"timeout": 90},
+            )
         return resp.text or ""
 
 

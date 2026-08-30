@@ -83,7 +83,9 @@ class Config:
     # ---- phân giải role ----
     def resolve(self, role: str = "chat") -> RoleConfig:
         roles = self.data.get("roles", {}) or {}
-        rc = roles.get(role, {}) or {}
+        # Verifier may use an independent model. If it is not configured,
+        # inherit work rather than unexpectedly falling back to another provider.
+        rc = roles.get(role, {}) or (roles.get("work", {}) if role == "verify" else {}) or {}
 
         provider = rc.get("provider") or self.default_provider
         pcfg = self.data.get(provider, {}) or {}
