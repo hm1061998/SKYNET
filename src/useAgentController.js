@@ -64,7 +64,7 @@ export function useAgentController() {
     (text, author = "bot") =>
       setMessages((current) => [
         ...current,
-        { id: crypto.randomUUID(), type: "text", author, text },
+        { id: crypto.randomUUID(), type: "text", author, text, createdAt: new Date().toISOString() },
       ]),
     [],
   );
@@ -230,6 +230,7 @@ export function useAgentController() {
             planUrl: data.plan_url,
             status: "pending",
             logs: [],
+            createdAt: new Date().toISOString(),
           };
           setMessages((current) => [...current, plan]);
           visual({ type: "plan-ready" });
