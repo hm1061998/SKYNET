@@ -421,7 +421,16 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._json({"success": False, "error": str(e), "logs": [f"[✗] {e}"]})
         if self.path == "/api/reject":
-            return self._json({"ok": True})
+            name = os.path.basename(str(body.get("plan_file") or ""))
+            removed = False
+            if name and name == body.get("plan_file") and name.startswith("plan_") and name.endswith(".html"):
+                path = PLANS_DIR / name
+                try:
+                    path.unlink(missing_ok=True)
+                    removed = True
+                except OSError:
+                    pass
+            return self._json({"ok": True, "plan_removed": removed})
         if self.path == "/api/tts":
             text = (body.get("text") or "").strip()[:800]
             if not text:

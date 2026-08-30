@@ -56,6 +56,42 @@ class LLMHardeningTests(unittest.TestCase):
             verdict = agent._step_check("step", {"skill": "", "result": "x"}, lambda _: None)
             self.assertFalse(verdict["achieved"])
 
+    def test_model_error_does_not_persist_chat_memory(self):
+        with tempfile.TemporaryDirectory() as td:
+            memory = Memory(root=Path(td)).load()
+            agent = SkillAgent(Config({"provider": "mock"}), memory)
+            agent.llm = FakeLLM(error=RuntimeError("offline"))
+            result = agent.handle_message("hãy giúp tôi")
+            self.assertIn("Lỗi model", result["reply"])
+            self.assertEqual(memory.history(), [])
+            self.assertFalse(memory.chat_path.exists())
+
+    def test_plan_error_does_not_persist_chat_memory(self):
+        class ClassifyThenFail(FakeLLM):
+            def complete_json(self, messages, **kwargs):
+                if kwargs.get("purpose") == "classify":
+                    return {"type": "task", "task": "tạo báo cáo"}
+                raise RuntimeError("planner offline")
+
+        with tempfile.TemporaryDirectory() as td:
+            memory = Memory(root=Path(td) / "mem").load()
+            agent = SkillAgent(Config({"provider": "mock"}), memory)
+            agent.llm = ClassifyThenFail()
+            result = agent.handle_message("tạo báo cáo")
+            self.assertIn("Lỗi model lập kế hoạch", result["reply"])
+            self.assertEqual(memory.history(), [])
+
+    def test_successful_exchange_is_persisted_as_pair(self):
+        with tempfile.TemporaryDirectory() as td:
+            memory = Memory(root=Path(td)).load()
+            memory.add_exchange("xin chào", "chào bạn")
+            self.assertEqual(
+                memory.history(),
+                [{"role": "user", "content": "xin chào"},
+                 {"role": "assistant", "content": "chào bạn"}],
+            )
+            self.assertEqual(len(memory.chat_path.read_text(encoding="utf-8").splitlines()), 2)
+
     def test_artifact_validator_checks_presence_and_size(self):
         with tempfile.TemporaryDirectory() as td:
             agent = SkillAgent(Config({"provider": "mock"}), Memory(root=Path(td) / "mem").load())

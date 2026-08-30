@@ -192,7 +192,10 @@ export function useAgentController() {
 
   const rejectPlan = useCallback(
     async (plan) => {
-      await api("/api/reject", { task: plan.task }).catch(() => {});
+      await api("/api/reject", {
+        task: plan.task,
+        plan_file: plan.planFile,
+      }).catch(() => {});
       visual({ type: "plan-ready" });
       setMessages((current) =>
         current.map((item) =>
@@ -227,6 +230,7 @@ export function useAgentController() {
             type: "plan",
             task: data.task,
             steps: data.steps || [],
+            planFile: data.plan_file,
             planUrl: data.plan_url,
             status: "pending",
             logs: [],

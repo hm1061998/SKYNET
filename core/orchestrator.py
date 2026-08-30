@@ -212,8 +212,6 @@ class SkillAgent:
         if ctx:
             sys_content = _CLASSIFY_SYS + "\n\n--- BỐI CẢNH ĐÃ GHI NHỚ ---\n" + ctx
 
-        self.memory.add_turn("user", text)
-
         try:
             data = self.llm.complete_json(
                 [{"role": "system", "content": sys_content},
@@ -229,39 +227,41 @@ class SkillAgent:
             fact = (data.get("fact") or text).strip()
             self.memory.remember(fact, kind="preference")
             reply = f"Đã ghi nhớ: {fact}"
-            self.memory.add_turn("assistant", reply)
+            self.memory.add_exchange(text, reply)
             return {"mode": "chat", "reply": reply, "remembered": True}
 
         if data.get("type") == "task":
             task = data.get("task") or text
-            steps = self._plan(task)
-            path = planner.render_plan_html(task, steps)
-            self.memory.add_turn("assistant", f"(kế hoạch cho tác vụ: {task})")
+            try:
+                steps = self._plan(task)
+                path = planner.render_plan_html(task, steps)
+            except Exception as e:
+                return {"mode": "chat", "reply": f"(Lỗi model lập kế hoạch: {e})"}
+            self.memory.add_exchange(text, f"(kế hoạch cho tác vụ: {task})")
             return {"mode": "plan", "task": task, "steps": steps,
                     "plan_file": path.name, "plan_url": f"/plans/{path.name}"}
 
         reply = data.get("reply") or f"Mình nghe đây, bạn cần {AGENT_NAME} giúp gì?"
-        self.memory.add_turn("assistant", reply)
+        self.memory.add_exchange(text, reply)
         return {"mode": "chat", "reply": reply}
 
     def _plan(self, task: str) -> list[str]:
-        try:
-            data = self.llm.complete_json(
-                [{"role": "system", "content": _PLAN_SYS},
-                 {"role": "user", "content": f"Tác vụ: {task}"}],
-                role="chat", purpose="plan", temperature=0.3, max_tokens=500,
-                schema={"steps": list})
-            steps = (data or {}).get("steps")
-            if isinstance(steps, list) and steps:
-                return [str(s) for s in steps]
-        except Exception:
-            pass
-        return [
-            f"Phân tích yêu cầu: {task}",
-            "Tách thành các bước nếu là tác vụ ghép",
-            "Với mỗi bước: tìm/sinh skill, kiểm thử, tự điền tham số, chạy — tự phục hồi nếu lỗi",
-            "Tổng hợp kết quả rồi báo cáo",
-        ]
+        data = self.llm.complete_json(
+            [{"role": "system", "content": _PLAN_SYS},
+             {"role": "user", "content": f"Tác vụ: {task}"}],
+            role="chat", purpose="plan", temperature=0.3, max_tokens=500,
+            schema={"steps": list})
+        raw_steps = (data or {}).get("steps")
+        steps = []
+        for value in raw_steps or []:
+            step = " ".join(str(value).split()).strip(" -\t")
+            if step and step.casefold() not in {item.casefold() for item in steps}:
+                steps.append(step[:500])
+            if len(steps) >= 12:
+                break
+        if not steps:
+            raise ValueError("Model không trả về bước thực thi hợp lệ")
+        return steps
 
     # ============ MODEL WORK: điều phối ============
     MAX_ROUNDS = 4
@@ -1113,9 +1113,10 @@ class SkillAgent:
 
         verb = "sinh mới" if generated else "tái dùng"
         status = "thành công" if success else "thất bại"
-        self.memory.remember(
-            f"Tác vụ \"{task}\" → dùng skill '{name}' ({verb}), kết quả: {status}.",
-            kind="task", tags=[name] + list((params or {}).keys()))
+        if success:
+            self.memory.remember(
+                f"Tác vụ \"{task}\" → dùng skill '{name}' ({verb}), kết quả: {status}.",
+                kind="task", tags=[name] + list((params or {}).keys()))
 
         return {
             "success": success,

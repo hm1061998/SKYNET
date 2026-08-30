@@ -84,12 +84,36 @@ class Memory:
     def add_turn(self, role: str, content: str) -> None:
         """Ghi một lượt hội thoại (role = 'user' | 'assistant' | 'system')."""
         self._ensure()
-        turn = {"role": role, "content": content, "ts": _now()}
-        self._working.append(turn)
-        if len(self._working) > self.max_working:
-            self._working = self._working[-self.max_working:]
+        self._commit_turns([{"role": role, "content": content, "ts": _now()}])
+
+    def add_exchange(self, user: str, assistant: str) -> None:
+        """Commit nguyên tử một lượt user/assistant sau khi model đã thành công.
+
+        Không gọi hàm này ở nhánh lỗi model. Hai lượt được ghi trong cùng một lần mở
+        file để tránh lịch sử chỉ có câu hỏi nhưng thiếu câu trả lời.
+        """
+        self._ensure()
+        ts = _now()
+        self._commit_turns([
+            {"role": "user", "content": user, "ts": ts},
+            {"role": "assistant", "content": assistant, "ts": ts},
+        ])
+
+    def _commit_turns(self, turns: list[dict]) -> None:
+        clean = []
+        for turn in turns:
+            role = str(turn.get("role") or "").strip()
+            content = str(turn.get("content") or "").strip()
+            if role not in {"user", "assistant", "system"} or not content:
+                continue
+            clean.append({"role": role, "content": content,
+                          "ts": float(turn.get("ts") or _now())})
+        if not clean:
+            return
         if self.persist_chat:
-            _append_jsonl(self.chat_path, turn)
+            _append_many_jsonl(self.chat_path, clean)
+        self._working.extend(clean)
+        self._working = self._working[-self.max_working:]
 
     def history(self, limit: int | None = None) -> list[dict]:
         """Trả các lượt gần nhất dưới dạng [{role, content}] để đưa vào messages."""
@@ -209,6 +233,14 @@ def _append_jsonl(path: Path, obj: dict) -> None:
     path.parent.mkdir(exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
+def _append_many_jsonl(path: Path, objs: list[dict]) -> None:
+    path.parent.mkdir(exist_ok=True)
+    payload = "".join(json.dumps(obj, ensure_ascii=False) + "\n" for obj in objs)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(payload)
+        f.flush()
 
 
 def _rewrite_jsonl(path: Path, objs: list[dict]) -> None:

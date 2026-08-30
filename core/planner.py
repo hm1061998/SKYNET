@@ -2,6 +2,7 @@
 from __future__ import annotations
 import html
 import time
+import uuid
 
 from . import PLANS_DIR
 from .identity import AGENT_NAME
@@ -9,7 +10,8 @@ from .identity import AGENT_NAME
 
 def new_plan_path() -> "os.PathLike":
     PLANS_DIR.mkdir(exist_ok=True)
-    return PLANS_DIR / f"plan_{time.strftime('%Y%m%d_%H%M%S')}.html"
+    suffix = uuid.uuid4().hex[:8]
+    return PLANS_DIR / f"plan_{time.strftime('%Y%m%d_%H%M%S')}_{suffix}.html"
 
 
 def render_plan_html(task: str, steps: list[str], path=None):
@@ -20,7 +22,9 @@ def render_plan_html(task: str, steps: list[str], path=None):
     )
     doc = _TEMPLATE.format(agent_name=html.escape(AGENT_NAME), task=html.escape(task), items=items,
                            ts=time.strftime("%H:%M:%S %d/%m/%Y"))
-    path.write_text(doc, encoding="utf-8")
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(doc, encoding="utf-8")
+    temp_path.replace(path)
     return path
 
 
